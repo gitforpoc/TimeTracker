@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+    />
+    <title>TimeTracker</title>
+
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+    <meta name="theme-color" content="#1c1c57" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <div class="logo">TIME<span class="pink-text">TRACKER</span></div>
+        <div class="history-wrapper">
+          <button id="history-btn" class="icon-btn">
+            <img src="iconlogs2.png" alt="History" />
+          </button>
+          <span id="history-badge" class="badge hidden">0</span>
+        </div>
+      </header>
+
+      <main id="dashboard">
+        <div class="user-display">
+          <input
+            type="text"
+            id="username"
+            placeholder="Enter Your Name"
+            autocomplete="off"
+          />
+        </div>
+
+        <div class="timer-container">
+          <svg class="progress-ring" width="260" height="260">
+            <circle class="ring-track" cx="130" cy="130" r="110"></circle>
+            <circle
+              class="ring-progress-blue"
+              cx="130"
+              cy="130"
+              r="110"
+            ></circle>
+            <circle
+              class="ring-progress-pink"
+              cx="130"
+              cy="130"
+              r="110"
+            ></circle>
+          </svg>
+
+          <div class="timer-text">
+            <span id="status-label">OFF DUTY</span>
+            <div id="main-timer">00:00:00</div>
+          </div>
+        </div>
+
+        <div id="quote-box" class="quote-box hidden">
+          <p id="quote-text">Stay sharp.</p>
+        </div>
+
+        <div class="controls">
+          <button id="main-action-btn" class="btn-main">CLOCK IN</button>
+
+          <div class="sub-controls">
+            <button class="btn-sub" onclick="app.addSpecialDay('Day Off')">
+              Day Off
+            </button>
+            <button class="btn-sub" onclick="app.addSpecialDay('Paid Off')">
+              Paid Off (8h)
+            </button>
+          </div>
+        </div>
+
+        <div id="msg-preview" class="msg-preview">
+          <span id="msg-text">Ready to start...</span>
+          <span class="copy-icon">📋</span>
+        </div>
+      </main>
+
+      <div id="history-view" class="modal hidden">
+        <div class="modal-header">
+          <h2>History & Reports</h2>
+          <button id="close-history" class="icon-btn">✕</button>
+        </div>
+
+        <div class="modal-content">
+          <div class="report-controls">
+            <label>Select Period</label>
+            <select id="period-select"></select>
+            <div class="total-badge">
+              Total: <span id="total-hours">0h 0m</span>
+            </div>
+          </div>
+
+          <button class="btn-outline" onclick="app.copyReport()">
+            Copy Full Report
+          </button>
+          <button
+            class="btn-outline"
+            style="margin-top: 10px"
+            onclick="app.exportData()"
+          >
+            Backup Data (JSON)
+          </button>
+
+          <ul id="history-list"></ul>
+
+          <div
+            style="
+              margin-top: 30px;
+              border-top: 1px solid #ddd;
+              padding-top: 20px;
+            "
+          >
+            <button class="btn-danger" onclick="app.clearData()">
+              Reset App
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast">Copied!</div>
+
+    <script src="script.js"></script>
+    <script>
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker
+          .register("sw.js")
+          .then(() => console.log("SW Registered"));
+      }
+    </script>
+  </body>
+</html>
