@@ -26,7 +26,11 @@
         <div class="logo">TIME<span class="pink-text">TRACKER</span></div>
         <div class="history-wrapper">
           <button id="history-btn" class="icon-btn">
-            <img src="iconlogs2.png" alt="History" />
+            <img
+              src="iconlogs2.png"
+              alt="History"
+              style="width: 32px; height: 32px"
+            />
           </button>
           <span id="history-badge" class="badge hidden">0</span>
         </div>
@@ -34,12 +38,15 @@
 
       <main id="dashboard">
         <div class="user-display">
-          <input
-            type="text"
-            id="username"
-            placeholder="Enter Your Name"
-            autocomplete="off"
-          />
+          <div class="input-wrapper">
+            <span class="user-icon">👤</span>
+            <input
+              type="text"
+              id="username"
+              placeholder="Enter Your Name"
+              autocomplete="off"
+            />
+          </div>
         </div>
 
         <div class="timer-container">
@@ -91,13 +98,25 @@
       <div id="history-view" class="modal hidden">
         <div class="modal-header">
           <h2>History & Reports</h2>
-          <button id="close-history" class="icon-btn">✕</button>
+          <button id="close-history" class="close-btn">✕</button>
         </div>
 
         <div class="modal-content">
           <div class="report-controls">
             <label>Select Period</label>
             <select id="period-select"></select>
+
+            <div id="custom-range-box" class="custom-range hidden">
+              <div class="date-group">
+                <label>Start:</label>
+                <input type="date" id="date-start" />
+              </div>
+              <div class="date-group">
+                <label>End:</label>
+                <input type="date" id="date-end" />
+              </div>
+            </div>
+
             <div class="total-badge">
               Total: <span id="total-hours">0h 0m</span>
             </div>

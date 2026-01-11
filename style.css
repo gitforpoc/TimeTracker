@@ -31,14 +31,13 @@ body {
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
 }
 
-/* Header & Icons */
+/* Header */
 header {
   padding: 20px;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-
 .logo {
   font-weight: 800;
   font-size: 24px;
@@ -51,22 +50,14 @@ header {
 .history-wrapper {
   position: relative;
 }
-
 .icon-btn {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.icon-btn img {
-  width: 32px;
-  height: 32px;
+  padding: 0;
 }
 
-/* Notification Badge */
+/* Badge */
 .badge {
   position: absolute;
   top: -5px;
@@ -87,7 +78,7 @@ header {
   display: none;
 }
 
-/* Dashboard & Username Input */
+/* Dashboard */
 #dashboard {
   flex: 1;
   display: flex;
@@ -97,41 +88,46 @@ header {
   overflow-y: auto;
 }
 
+/* User Input Styling */
 .user-display {
   width: 100%;
   margin-bottom: 10px;
 }
-
+.input-wrapper {
+  position: relative;
+  width: 100%;
+}
+.user-icon {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.5;
+  font-size: 18px;
+}
 #username {
   font-family: var(--font);
   font-size: 22px;
   font-weight: 700;
   text-align: center;
   border: none;
-  /* Default visible border */
   border-bottom: 2px solid var(--border-light);
   color: var(--navy);
   width: 100%;
-  padding: 8px 0;
+  padding: 8px 0 8px 25px; /* Padding for icon */
   transition: 0.3s;
   background: transparent;
-  border-radius: 0; /* Fix for iOS rounded corners */
-}
-#username::placeholder {
-  color: #ccc;
-  font-weight: 400;
+  border-radius: 0;
 }
 #username:focus {
   outline: none;
-  border-bottom-color: var(--pink) !important;
+  border-bottom-color: var(--pink);
 }
-
-/* Style when name is filled */
 #username.filled {
   border-bottom-color: transparent;
 }
 
-/* Error shake animation */
+/* Shake Animation */
 @keyframes shake {
   0%,
   100% {
@@ -147,10 +143,9 @@ header {
 .input-error {
   animation: shake 0.3s;
   border-bottom-color: var(--pink) !important;
-  color: var(--pink) !important;
 }
 
-/* Timer Ring (unchanged) */
+/* Timer Ring */
 .timer-container {
   position: relative;
   width: 260px;
@@ -202,7 +197,7 @@ circle {
   line-height: 1;
 }
 
-/* Motivation */
+/* Quote */
 .quote-box {
   min-height: 30px;
   margin-bottom: 20px;
@@ -239,7 +234,6 @@ circle {
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(255, 57, 154, 0.4);
   transition: transform 0.1s, background 0.2s;
-  -webkit-tap-highlight-color: transparent;
 }
 .btn-main:active {
   transform: scale(0.98);
@@ -248,6 +242,7 @@ circle {
   background: var(--navy);
   box-shadow: 0 4px 15px rgba(28, 28, 87, 0.4);
 }
+
 .sub-controls {
   display: flex;
   gap: 10px;
@@ -264,7 +259,7 @@ circle {
   cursor: pointer;
 }
 
-/* Preview & Modal (minor tweaks) */
+/* Preview & Modal */
 .msg-preview {
   margin-top: 20px;
   width: 100%;
@@ -279,6 +274,7 @@ circle {
   cursor: pointer;
   font-size: 14px;
 }
+
 .modal {
   position: absolute;
   top: 0;
@@ -289,11 +285,12 @@ circle {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  transition: transform 0.3s;
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .modal.hidden {
   transform: translateY(100%);
 }
+
 .modal-header {
   padding: 20px;
   border-bottom: 1px solid #eee;
@@ -304,12 +301,28 @@ circle {
 .modal-header h2 {
   margin: 0;
   color: var(--navy);
+  font-size: 20px;
 }
+
+/* Bold Close Button */
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--navy);
+  padding: 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+
 .modal-content {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
 }
+
+/* History List */
 #history-list {
   list-style: none;
   padding: 0;
@@ -335,18 +348,51 @@ circle {
   background: none;
   border: none;
   font-weight: bold;
-  padding: 5px 10px;
+  padding: 10px;
 }
+
+/* Form Elements */
 select {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border-radius: 10px;
   border: 1px solid #ddd;
   font-size: 16px;
   margin-bottom: 15px;
   font-family: var(--font);
-  outline: none;
+  background: white;
 }
+
+/* Custom Range */
+.custom-range {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 15px;
+  background: #f8f9fa;
+  padding: 10px;
+  border-radius: 10px;
+}
+.custom-range.hidden {
+  display: none;
+}
+.date-group {
+  flex: 1;
+}
+.date-group label {
+  display: block;
+  font-size: 12px;
+  color: var(--gray);
+  margin-bottom: 5px;
+}
+.date-group input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-family: var(--font);
+}
+
 .total-badge {
   background: var(--navy);
   color: white;
@@ -376,6 +422,7 @@ select {
   font-weight: 600;
   cursor: pointer;
 }
+
 #toast {
   position: fixed;
   bottom: 30px;
