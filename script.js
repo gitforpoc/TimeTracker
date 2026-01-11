@@ -202,19 +202,32 @@ class TimeTracker {
 
   // --- Server Side (Vercel) ---
   async sendToCloud(payload) {
-    if (!navigator.onLine) return; // Save traffic if offline
+    if (!navigator.onLine) return;
 
     try {
-      // Sending to YOUR Vercel API route (we will create this in Part 3)
-      await fetch("/api/submit", {
+      console.log("Попытка отправки данных...");
+
+      const response = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      console.log("Data sent to cloud");
+
+      // Вот тут мы проверяем: всё ли хорошо?
+      if (!response.ok) {
+        // Если сервер вернул ошибку, читаем её текст
+        const errorData = await response.json().catch(() => ({}));
+        const errorMessage = errorData.message || response.statusText;
+        throw new Error(`Ошибка сервера ${response.status}: ${errorMessage}`);
+      }
+
+      const result = await response.json();
+      console.log("Успешно отправлено:", result);
+      // alert("Успех! Данные ушли."); // Раскомментируй, если хочешь видеть успех
     } catch (error) {
       console.error("Cloud sync failed:", error);
-      // Silent fail is okay for MVP, data is safe locally
+      // ЭТО ГЛАВНОЕ: Покажет ошибку на экране
+      alert("⚠️ НЕ ОТПРАВИЛОСЬ: " + error.message);
     }
   }
 
