@@ -200,34 +200,26 @@ class TimeTracker {
     });
   }
 
-  // --- Server Side (Vercel) ---
   async sendToCloud(payload) {
     if (!navigator.onLine) return;
 
     try {
-      console.log("Попытка отправки данных...");
-
+      // console.log("Отправка...");
       const response = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      // Вот тут мы проверяем: всё ли хорошо?
       if (!response.ok) {
-        // Если сервер вернул ошибку, читаем её текст
         const errorData = await response.json().catch(() => ({}));
-        const errorMessage = errorData.message || response.statusText;
-        throw new Error(`Ошибка сервера ${response.status}: ${errorMessage}`);
+        throw new Error(errorData.message || response.statusText);
       }
 
-      const result = await response.json();
-      console.log("Успешно отправлено:", result);
-      // alert("Успех! Данные ушли."); // Раскомментируй, если хочешь видеть успех
+      // const result = await response.json();
+      // alert("Успешно отправлено!"); // Можно включить для теста
     } catch (error) {
-      console.error("Cloud sync failed:", error);
-      // ЭТО ГЛАВНОЕ: Покажет ошибку на экране
-      alert("⚠️ НЕ ОТПРАВИЛОСЬ: " + error.message);
+      alert("⚠️ ОШИБКА: " + error.message);
     }
   }
 
