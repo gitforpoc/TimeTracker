@@ -114,6 +114,7 @@ header {
   border-bottom: 2px solid var(--border-light);
   color: var(--navy);
   width: 100%;
+  box-sizing: border-box;
   padding: 8px 25px 8px 25px; /* Padding for icon */
   transition: 0.3s;
   background: transparent;
