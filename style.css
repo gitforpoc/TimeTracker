@@ -314,6 +314,56 @@ circle {
   transform: translateY(100%);
 }
 
+/* Custom Dialog Styling */
+#custom-dialog {
+  background: rgba(28, 28, 87, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  transform: none;
+}
+#custom-dialog.hidden {
+  display: none;
+}
+.dialog-box {
+  background: var(--white);
+  width: 85%;
+  max-width: 340px;
+  border-radius: 24px;
+  padding: 30px;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  flex: none;
+}
+#dialog-title {
+  margin-top: 0;
+  font-size: 20px;
+  color: var(--navy);
+}
+#dialog-body {
+  margin: 20px 0;
+}
+.custom-date-input {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid var(--border-light);
+  border-radius: 12px;
+  font-family: var(--font);
+  font-size: 16px;
+  color: var(--navy);
+  outline: none;
+}
+.custom-date-input:focus {
+  border-color: var(--pink);
+}
+.dialog-footer {
+  display: flex;
+  gap: 10px;
+}
+
 .modal-header {
   padding: 20px;
   border-bottom: 1px solid #eee;

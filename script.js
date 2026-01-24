@@ -59,10 +59,27 @@ class TimeTracker {
     this.els.username.value = this.userName;
     this.checkInputState();
 
-    // Listeners
-    this.els.username.addEventListener("input", (e) => {
-      this.userName = e.target.value;
-      localStorage.setItem("tt_user", this.userName);
+    // Listeners for Username
+    this.els.username.addEventListener("input", () => this.checkInputState());
+    this.els.username.addEventListener("change", async (e) => {
+      const newName = e.target.value.trim();
+      const oldName = this.userName;
+
+      if (oldName && newName && oldName !== newName) {
+        const confirmed = await this.showDialog(
+          `Change name to "${newName}"?`,
+          false
+        );
+        if (confirmed) {
+          this.userName = newName;
+          localStorage.setItem("tt_user", this.userName);
+        } else {
+          this.els.username.value = oldName;
+        }
+      } else {
+        this.userName = newName;
+        localStorage.setItem("tt_user", this.userName);
+      }
       this.checkInputState();
     });
 
@@ -186,6 +203,8 @@ class TimeTracker {
         shift.out = now.getTime();
         shift.duration = Math.floor((shift.out - shift.in) / 60000);
         this.status = "pending";
+        this.updateTimer(); // Update one last time to show final duration
+        this.stopTimerLoop(); // Stop main loop to prevent ring flickering
         this.startResumeTimer();
       }
       this.renderUI();
@@ -193,7 +212,7 @@ class TimeTracker {
   }
 
   startResumeTimer() {
-    this.resumeSeconds = 60;
+    this.resumeSeconds = 10;
     if (this.resumeInterval) clearInterval(this.resumeInterval);
 
     this.resumeInterval = setInterval(() => {
@@ -215,6 +234,7 @@ class TimeTracker {
       shift.duration = 0;
     }
     this.status = "in";
+    this.startTimerLoop(); // Restart main loop
     this.save();
     this.renderUI();
   }
@@ -253,15 +273,11 @@ class TimeTracker {
     this.renderUI();
   }
 
-  addSpecialDay(type) {
+  async addSpecialDay(type) {
     if (!this.validateUser()) return;
 
-    // Ask for date
-    const defaultDate = new Date().toISOString().split("T")[0];
-    const dateInput = prompt(
-      `Enter date for ${type} (YYYY-MM-DD):`,
-      defaultDate
-    );
+    // Use custom dialog instead of prompt
+    const dateInput = await this.showDialog(`Select date for ${type}`, true);
     if (!dateInput) return;
 
     const selectedDate = new Date(dateInput);
@@ -273,18 +289,22 @@ class TimeTracker {
     // Logic checks
     const isToday = selectedDate.toDateString() === new Date().toDateString();
     if (this.status === "in" && isToday) {
-      if (
-        !confirm("You are currently ON SHIFT. Add a day off for today anyway?")
-      )
-        return;
+      const confirmToday = await this.showDialog(
+        "You are currently ON SHIFT. Add a day off for today anyway?",
+        false
+      );
+      if (!confirmToday) return;
     }
 
     const hasConflict = this.data.some(
       (i) => new Date(i.dateObj).toDateString() === selectedDate.toDateString()
     );
     if (hasConflict) {
-      if (!confirm("You already have an entry for this date. Add another one?"))
-        return;
+      const confirmConflict = await this.showDialog(
+        "You already have an entry for this date. Add another one?",
+        false
+      );
+      if (!confirmConflict) return;
     }
 
     const dur = type === "Paid Off" ? 480 : 0; // 8 hours in mins
@@ -313,6 +333,34 @@ class TimeTracker {
     });
   }
 
+  // Helper for custom pretty dialogs
+  showDialog(title, showDateInput = false) {
+    return new Promise((resolve) => {
+      const dialog = document.getElementById("custom-dialog");
+      const titleEl = document.getElementById("dialog-title");
+      const dateInput = document.getElementById("dialog-date-input");
+      const confirmBtn = document.getElementById("dialog-confirm");
+      const cancelBtn = document.getElementById("dialog-cancel");
+
+      titleEl.innerText = title;
+      dateInput.style.display = showDateInput ? "block" : "none";
+      if (showDateInput)
+        dateInput.value = new Date().toISOString().split("T")[0];
+
+      dialog.classList.remove("hidden");
+
+      const close = (result) => {
+        dialog.classList.add("hidden");
+        confirmBtn.onclick = null;
+        cancelBtn.onclick = null;
+        resolve(result);
+      };
+
+      confirmBtn.onclick = () => close(showDateInput ? dateInput.value : true);
+      cancelBtn.onclick = () => close(false);
+    });
+  }
+
   scheduleCloudSync(id, payload) {
     // If there's an existing timeout for this ID, clear it
     if (this.syncTimeouts.has(id)) clearTimeout(this.syncTimeouts.get(id));
@@ -329,7 +377,6 @@ class TimeTracker {
     if (!navigator.onLine) return;
 
     try {
-      // console.log("Отправка...");
       const response = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -340,9 +387,6 @@ class TimeTracker {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.message || response.statusText);
       }
-
-      // const result = await response.json();
-      // alert("Успешно отправлено!"); // Можно включить для теста
     } catch (error) {
       this.showToast("⚠️ Cloud Sync Error: " + error.message);
     }
@@ -414,7 +458,7 @@ class TimeTracker {
 
   updateRingPending(seconds) {
     const C = 691;
-    let progress = seconds / 60;
+    let progress = seconds / 10;
     this.els.ringPink.style.strokeDashoffset = C - progress * C;
   }
 
@@ -585,8 +629,8 @@ class TimeTracker {
     }
   }
 
-  deleteItem(id) {
-    if (confirm("Delete entry?")) {
+  async deleteItem(id) {
+    if (await this.showDialog("Delete entry?", false)) {
       this.data = this.data.filter((i) => i.id !== id);
       if (this.currentShiftId === id) {
         this.status = "out";
@@ -600,8 +644,8 @@ class TimeTracker {
     }
   }
 
-  clearData() {
-    if (confirm("Delete ALL history?")) {
+  async clearData() {
+    if (await this.showDialog("Delete ALL history?", false)) {
       localStorage.clear();
       location.reload();
     }
