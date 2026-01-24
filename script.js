@@ -12,6 +12,7 @@ class TimeTracker {
     this.status = localStorage.getItem("tt_status") || "out";
     this.currentShiftId = localStorage.getItem("tt_shiftId") || null;
     this.userName = localStorage.getItem("tt_user") || "";
+    this.autoShare = localStorage.getItem("tt_autoShare") === "true"; // Load setting
     this.unreadLogs = 0;
     this.timerInterval = null;
     this.lastClickTime = 0; // For debounce
@@ -49,6 +50,7 @@ class TimeTracker {
       customRangeBox: document.getElementById("custom-range-box"),
       dateStart: document.getElementById("date-start"),
       dateEnd: document.getElementById("date-end"),
+      autoShareToggle: document.getElementById("auto-share-toggle"),
     };
 
     this.init();
@@ -58,6 +60,13 @@ class TimeTracker {
     // Restore user name
     this.els.username.value = this.userName;
     this.checkInputState();
+
+    // Restore Auto-Share setting
+    this.els.autoShareToggle.checked = this.autoShare;
+    this.els.autoShareToggle.addEventListener("change", (e) => {
+      this.autoShare = e.target.checked;
+      localStorage.setItem("tt_autoShare", this.autoShare);
+    });
 
     // Listeners for Username
     this.els.username.addEventListener("input", () => this.checkInputState());
@@ -190,6 +199,9 @@ class TimeTracker {
       this.els.previewText.innerText = msg;
       this.incrementBadge();
 
+      // Try to share if enabled
+      if (this.autoShare) this.shareText(msg);
+
       this.scheduleCloudSync(newShift.id, {
         name: this.userName,
         action: actionType,
@@ -203,6 +215,16 @@ class TimeTracker {
         shift.out = now.getTime();
         shift.duration = Math.floor((shift.out - shift.in) / 60000);
         this.status = "pending";
+
+        // IMMEDIATE ACTION: Generate text & Copy
+        const timeStr = this.formatTime(now);
+        const msg = `${timeStr} ${this.userName} - clock out`;
+        this.copyToClipboard(msg);
+        this.els.previewText.innerText = msg;
+
+        // Try to share if enabled
+        if (this.autoShare) this.shareText(msg);
+
         this.updateTimer(); // Update one last time to show final duration
         this.stopTimerLoop(); // Stop main loop to prevent ring flickering
         this.startResumeTimer();
@@ -250,9 +272,9 @@ class TimeTracker {
     } else {
       const now = new Date(shift.out);
       const timeStr = this.formatTime(now);
-      const msg = `${timeStr} ${this.userName} - clock out`;
+      const msg = `${timeStr} ${this.userName} - clock out`; // Re-generate just for sync payload
 
-      this.copyToClipboard(msg);
+      // Note: We already copied to clipboard in toggleClock
       this.els.previewText.innerText = msg;
       this.incrementBadge();
       this.showToast("Shift saved");
@@ -324,6 +346,9 @@ class TimeTracker {
     this.els.previewText.innerText = msg;
     this.showToast(`${type} added`);
     this.incrementBadge();
+
+    // Try to share if enabled
+    if (this.autoShare) this.shareText(msg);
 
     this.scheduleCloudSync(entryId, {
       name: this.userName,
@@ -692,6 +717,16 @@ class TimeTracker {
     navigator.clipboard
       .writeText(text)
       .then(() => this.showToast("Copied to clipboard!"));
+  }
+
+  async shareText(text) {
+    if (navigator.share) {
+      try {
+        await navigator.share({ text: text });
+      } catch (err) {
+        // User cancelled share or error, ignore
+      }
+    }
   }
 
   showToast(msg) {

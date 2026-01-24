@@ -452,6 +452,22 @@ select {
   background: white;
 }
 
+/* Settings Box */
+.settings-box {
+  margin-bottom: 20px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 10px;
+}
+.switch-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--navy);
+}
+
 /* Custom Range */
 .custom-range {
   display: flex;
