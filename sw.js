@@ -1,6 +1,12 @@
-const CACHE_NAME = "my-app-cache-v1";
+const CACHE_NAME = "timetracker-v1";
 
-const urlsToCache = ["/", "/index.html"];
+const urlsToCache = [
+  "/",
+  "/index.html",
+  "/style.css",
+  "/script.js",
+  "/manifest.json",
+];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
