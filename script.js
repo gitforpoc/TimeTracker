@@ -50,6 +50,7 @@ class TimeTracker {
       customRangeBox: document.getElementById("custom-range-box"),
       dateStart: document.getElementById("date-start"),
       dateEnd: document.getElementById("date-end"),
+      dialogTextInput: document.getElementById("dialog-text-input"),
       autoShareToggle: document.getElementById("auto-share-toggle"),
     };
 
@@ -205,6 +206,7 @@ class TimeTracker {
       this.scheduleCloudSync(newShift.id, {
         name: this.userName,
         action: actionType,
+        id: newShift.id, // Client ID for DB
         timestamp: now.toISOString(),
         localTime: timeStr,
       });
@@ -282,6 +284,7 @@ class TimeTracker {
       this.scheduleCloudSync(shift.id + "_out", {
         name: this.userName,
         action: "Clock Out",
+        id: shift.id, // Link to original shift
         timestamp: now.toISOString(),
         localTime: timeStr,
       });
@@ -353,24 +356,30 @@ class TimeTracker {
     this.scheduleCloudSync(entryId, {
       name: this.userName,
       action: type,
+      id: entryId,
       timestamp: selectedDate.toISOString(),
       localTime: "N/A",
     });
   }
 
   // Helper for custom pretty dialogs
-  showDialog(title, showDateInput = false) {
+  showDialog(title, inputType = false) {
+    // inputType: false (confirm), 'date', 'text'
     return new Promise((resolve) => {
       const dialog = document.getElementById("custom-dialog");
       const titleEl = document.getElementById("dialog-title");
       const dateInput = document.getElementById("dialog-date-input");
+      const textInput = document.getElementById("dialog-text-input");
       const confirmBtn = document.getElementById("dialog-confirm");
       const cancelBtn = document.getElementById("dialog-cancel");
 
       titleEl.innerText = title;
-      dateInput.style.display = showDateInput ? "block" : "none";
-      if (showDateInput)
+      dateInput.style.display = inputType === "date" ? "block" : "none";
+      textInput.style.display = inputType === "text" ? "block" : "none";
+
+      if (inputType === "date")
         dateInput.value = new Date().toISOString().split("T")[0];
+      if (inputType === "text") textInput.value = "";
 
       dialog.classList.remove("hidden");
 
@@ -381,7 +390,11 @@ class TimeTracker {
         resolve(result);
       };
 
-      confirmBtn.onclick = () => close(showDateInput ? dateInput.value : true);
+      confirmBtn.onclick = () => {
+        if (inputType === "date") close(dateInput.value);
+        else if (inputType === "text") close(textInput.value);
+        else close(true);
+      };
       cancelBtn.onclick = () => close(false);
     });
   }
@@ -439,6 +452,20 @@ class TimeTracker {
   openHistory() {
     this.resetBadge();
     this.populatePeriods(); // Refresh list
+
+    // Auto-select current period
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = today.getMonth();
+    const d = today.getDate();
+    const range = d <= 15 ? "1-15" : "16-31";
+    const currentVal = `${y}-${m}-${range}`;
+
+    // Check if this option exists (it should), then select it
+    if (this.els.periodSelect.querySelector(`option[value="${currentVal}"]`)) {
+      this.els.periodSelect.value = currentVal;
+    }
+
     this.renderHistoryList();
     this.renderReport(); // Initial render
 
@@ -617,9 +644,17 @@ class TimeTracker {
   renderHistoryList() {
     const list = document.getElementById("history-list");
     list.innerHTML = "";
-    this.data.slice(0, 15).forEach((item) => {
-      const li = document.createElement("li");
-      li.className = "history-item";
+
+    // Use filtered items based on selection
+    const items = this.getReportItems().reverse(); // Newest first
+
+    items.forEach((item) => {
+      const div = document.createElement("div");
+      div.className = "history-card";
+
+      // Status Color Logic
+      if (item.type === "Paid Off") div.classList.add("paid-off");
+      if (item.duration > 720) div.classList.add("long-shift"); // > 12h
 
       let desc =
         item.type === "work"
@@ -630,19 +665,48 @@ class TimeTracker {
 
       if (item.duration > 0) desc += ` (${this.minsToHm(item.duration)})`;
 
-      li.innerHTML = `
-                <div class="item-left">
+      // Comment HTML
+      const commentHtml = item.comment
+        ? `<div class="comment-box">💬 ${item.comment}</div>`
+        : "";
+
+      div.innerHTML = `
+                <div class="card-header">
                     <span class="item-date">${this.formatDate(
                       new Date(item.dateObj)
                     )}</span>
                     <span class="item-time">${desc}</span>
                 </div>
-                <button class="del-btn" onclick="app.deleteItem(${
-                  item.id
-                })">Del</button>
+                ${commentHtml}
+                <div class="card-actions">
+                    <button class="comment-btn" onclick="app.addComment(${
+                      item.id
+                    })">💬</button>
+                    <button class="del-btn" onclick="app.deleteItem(${
+                      item.id
+                    })">DELETE</button>
+                </div>
             `;
-      list.appendChild(li);
+      list.appendChild(div);
     });
+  }
+
+  async addComment(id) {
+    const text = await this.showDialog("Enter Comment:", "text");
+    if (text) {
+      const item = this.data.find((i) => i.id === id);
+      if (item) {
+        item.comment = text;
+        this.save();
+        this.renderHistoryList();
+        this.scheduleCloudSync(Date.now(), {
+          type: "comment",
+          targetId: id,
+          comment: text,
+          name: this.userName,
+        });
+      }
+    }
   }
 
   // --- Utilities ---

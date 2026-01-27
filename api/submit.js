@@ -52,17 +52,32 @@ export default async function handler(req, res) {
   const taskSupabase = async () => {
     if (!SUPABASE_URL || !SUPABASE_KEY) return { skipped: true };
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    const { name, action, timestamp, localTime } = req.body;
+    const { name, action, timestamp, localTime, type, targetId, comment, id } =
+      req.body;
 
-    const { data, error } = await supabase.from("logs").insert([
-      {
-        user_name: name,
-        action: action,
-        client_time: timestamp,
-        local_string: localTime,
-        payload: req.body,
-      },
-    ]);
+    // Sanitize name
+    const cleanName = name ? name.trim() : "";
+    let data, error;
+
+    if (type === "comment") {
+      // Update existing record
+      ({ data, error } = await supabase
+        .from("logs")
+        .update({ comment: comment })
+        .eq("client_id", targetId));
+    } else {
+      // Insert new record
+      ({ data, error } = await supabase.from("logs").insert([
+        {
+          user_name: cleanName,
+          action: action,
+          client_time: timestamp,
+          local_string: localTime,
+          client_id: id, // Important for linking comments later
+          payload: req.body,
+        },
+      ]));
+    }
 
     if (error) throw new Error(`Supabase Error: ${error.message}`);
     return { success: true, data };

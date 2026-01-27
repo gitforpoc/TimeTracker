@@ -415,29 +415,70 @@ circle {
 #history-list {
   list-style: none;
   padding: 0;
+  margin-top: 20px;
 }
-.history-item {
-  padding: 12px 0;
-  border-bottom: 1px solid #eee;
+.history-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 15px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-left: 5px solid var(--navy); /* Default Blue */
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+.history-card.paid-off {
+  border-left-color: #10b981; /* Green */
+}
+.history-card.long-shift {
+  border-left-color: #ef4444; /* Red */
+}
+
+.card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 14px;
 }
 .item-date {
   font-weight: 700;
   color: var(--navy);
+  font-size: 15px;
 }
 .item-time {
   color: var(--gray);
-  font-size: 12px;
+  font-size: 13px;
+}
+.card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 5px;
 }
 .del-btn {
   color: #ef4444;
   background: none;
   border: none;
   font-weight: bold;
-  padding: 10px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.comment-btn {
+  background: none;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 5px;
+}
+.comment-box {
+  background: #fffbeb; /* Yellowish */
+  color: #92400e;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-top: 5px;
+  border: 1px solid #fcd34d;
 }
 
 /* Form Elements */
