@@ -124,8 +124,14 @@ class TimeTracker {
     this.els.periodSelect.addEventListener("change", () =>
       this.handlePeriodChange()
     );
-    this.els.dateStart.addEventListener("change", () => this.renderReport());
-    this.els.dateEnd.addEventListener("change", () => this.renderReport());
+    this.els.dateStart.addEventListener("change", () => {
+      this.renderReport();
+      this.renderHistoryList();
+    });
+    this.els.dateEnd.addEventListener("change", () => {
+      this.renderReport();
+      this.renderHistoryList();
+    });
 
     // Resume state
     if (this.status === "in") {
@@ -363,7 +369,7 @@ class TimeTracker {
   }
 
   // Helper for custom pretty dialogs
-  showDialog(title, inputType = false) {
+  showDialog(title, inputType = false, defaultValue = "") {
     // inputType: false (confirm), 'date', 'text'
     return new Promise((resolve) => {
       const dialog = document.getElementById("custom-dialog");
@@ -379,7 +385,7 @@ class TimeTracker {
 
       if (inputType === "date")
         dateInput.value = new Date().toISOString().split("T")[0];
-      if (inputType === "text") textInput.value = "";
+      if (inputType === "text") textInput.value = defaultValue;
 
       dialog.classList.remove("hidden");
 
@@ -574,6 +580,7 @@ class TimeTracker {
       this.els.customRangeBox.classList.add("hidden");
     }
     this.renderReport();
+    this.renderHistoryList();
   }
 
   getReportItems() {
@@ -648,6 +655,11 @@ class TimeTracker {
     // Use filtered items based on selection
     const items = this.getReportItems().reverse(); // Newest first
 
+    if (items.length === 0) {
+      list.innerHTML = `<div style="text-align:center; color:var(--gray); padding:20px; font-size:14px;">No records for this period</div>`;
+      return;
+    }
+
     items.forEach((item) => {
       const div = document.createElement("div");
       div.className = "history-card";
@@ -692,20 +704,25 @@ class TimeTracker {
   }
 
   async addComment(id) {
-    const text = await this.showDialog("Enter Comment:", "text");
-    if (text) {
-      const item = this.data.find((i) => i.id === id);
-      if (item) {
-        item.comment = text;
-        this.save();
-        this.renderHistoryList();
-        this.scheduleCloudSync(Date.now(), {
-          type: "comment",
-          targetId: id,
-          comment: text,
-          name: this.userName,
-        });
-      }
+    const item = this.data.find((i) => i.id === id);
+    if (!item) return;
+
+    const text = await this.showDialog(
+      "Edit Comment:",
+      "text",
+      item.comment || ""
+    );
+
+    if (text !== false) {
+      item.comment = text;
+      this.save();
+      this.renderHistoryList();
+      this.scheduleCloudSync(Date.now(), {
+        type: "comment",
+        targetId: id,
+        comment: text,
+        name: this.userName,
+      });
     }
   }
 
@@ -720,6 +737,8 @@ class TimeTracker {
 
   async deleteItem(id) {
     if (await this.showDialog("Delete entry?", false)) {
+      const item = this.data.find((i) => i.id === id);
+
       this.data = this.data.filter((i) => i.id !== id);
       if (this.currentShiftId === id) {
         this.status = "out";
@@ -730,6 +749,17 @@ class TimeTracker {
       this.save();
       this.renderHistoryList();
       this.renderReport();
+
+      // Soft delete in cloud (update comment)
+      if (item) {
+        const newComment = `[DELETED] ${item.comment || ""}`.trim();
+        this.scheduleCloudSync(Date.now(), {
+          type: "comment",
+          targetId: id,
+          comment: newComment,
+          name: this.userName,
+        });
+      }
     }
   }
 
