@@ -468,7 +468,7 @@ class TimeTracker {
     const m = today.getMonth();
     const d = today.getDate();
     const range = d <= 15 ? "1-15" : "16-31";
-    const currentVal = `${y}-${m}-${range}`;
+    const currentVal = `${y}_${m}_${range}`;
 
     // Check if this option exists (it should), then select it
     if (this.els.periodSelect.querySelector(`option[value="${currentVal}"]`)) {
@@ -554,7 +554,7 @@ class TimeTracker {
       const mName = new Date(y, m, 1).toLocaleDateString("en-US", {
         month: "short",
       });
-      const val = `${y}-${m}-${isFirst ? "1-15" : "16-31"}`;
+      const val = `${y}_${m}_${isFirst ? "1-15" : "16-31"}`;
       const label = `${mName} ${isFirst ? "1-15" : "16-End"}, ${y}`;
       const opt = document.createElement("option");
       opt.value = val;
@@ -605,8 +605,8 @@ class TimeTracker {
       // Set end date to end of day
       endDate.setHours(23, 59, 59, 999);
     } else {
-      // Parse standard value "2026-0-1-15"
-      const [y, m, range] = val.split("-");
+      // Parse standard value "2026_0_1-15"
+      const [y, m, range] = val.split("_");
       const [startD, endD] = range.includes("15") ? [1, 15] : [16, 31];
 
       startDate = new Date(y, m, startD);
