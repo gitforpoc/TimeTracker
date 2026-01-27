@@ -308,10 +308,13 @@ class TimeTracker {
     if (!this.validateUser()) return;
 
     // Use custom dialog instead of prompt
-    const dateInput = await this.showDialog(`Select date for ${type}`, true);
+    const dateInput = await this.showDialog(`Select date for ${type}`, "date");
     if (!dateInput) return;
 
-    const selectedDate = new Date(dateInput);
+    // Fix: Parse manually to ensure Local Time (avoids UTC timezone shift issues)
+    const [y, m, d] = dateInput.split("-").map(Number);
+    const selectedDate = new Date(y, m - 1, d);
+
     if (isNaN(selectedDate.getTime())) {
       this.showToast("Invalid date format");
       return;
@@ -592,16 +595,24 @@ class TimeTracker {
     if (val === "custom") {
       // Read from date inputs
       if (!this.els.dateStart.value || !this.els.dateEnd.value) return [];
-      startDate = new Date(this.els.dateStart.value);
-      endDate = new Date(this.els.dateEnd.value);
+
+      // Fix: Parse manually to ensure Local Time (avoids UTC timezone shift issues)
+      const [sY, sM, sD] = this.els.dateStart.value.split("-").map(Number);
+      const [eY, eM, eD] = this.els.dateEnd.value.split("-").map(Number);
+
+      startDate = new Date(sY, sM - 1, sD);
+      endDate = new Date(eY, eM - 1, eD);
       // Set end date to end of day
       endDate.setHours(23, 59, 59, 999);
     } else {
       // Parse standard value "2026-0-1-15"
       const [y, m, range] = val.split("-");
       const [startD, endD] = range.includes("15") ? [1, 15] : [16, 31];
+
       startDate = new Date(y, m, startD);
-      endDate = new Date(y, m, endD);
+      // Fix: Clamp to actual last day of month to prevent spillover (e.g. Feb 30 -> Mar 2)
+      const lastDay = new Date(y, Number(m) + 1, 0).getDate();
+      endDate = new Date(y, m, Math.min(endD, lastDay));
       endDate.setHours(23, 59, 59, 999);
     }
 
