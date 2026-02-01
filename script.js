@@ -17,8 +17,6 @@ class TimeTracker {
     this.timerInterval = null;
     this.lastClickTime = 0; // For debounce
     this.syncTimeouts = new Map(); // Store timeouts for delayed cloud sync
-    this.resumeSeconds = 0;
-    this.resumeInterval = null;
 
     // Quotes for motivation
     this.quotes = [
@@ -52,6 +50,13 @@ class TimeTracker {
       dateEnd: document.getElementById("date-end"),
       dialogTextInput: document.getElementById("dialog-text-input"),
       autoShareToggle: document.getElementById("auto-share-toggle"),
+      // Bottom Sheet Elements
+      sheetOverlay: document.getElementById("sheet-overlay"),
+      sheet: document.getElementById("action-sheet"),
+      sheetTitle: document.getElementById("sheet-title"),
+      sheetDesc: document.getElementById("sheet-desc"),
+      sheetConfirm: document.getElementById("sheet-confirm"),
+      sheetCancel: document.getElementById("sheet-cancel"),
     };
 
     this.init();
@@ -137,8 +142,6 @@ class TimeTracker {
     if (this.status === "in") {
       this.startTimerLoop();
       this.showQuote();
-    } else if (this.status === "pending") {
-      this.finalizeClockOut(); // Safety: if reloaded during pending, just finish the shift
     } else {
       this.updateRing(0);
     }
@@ -171,19 +174,59 @@ class TimeTracker {
     if (nowTime - this.lastClickTime < 2000) return;
     this.lastClickTime = nowTime;
 
+    // Instead of acting immediately, open the Sheet
+    this.openActionSheet();
+  }
+
+  openActionSheet() {
+    const now = new Date();
+    const timeStr = this.formatTime(now);
+
+    // Setup Sheet Content based on current status
+    if (this.status === "out") {
+      // Preparing to Clock IN
+      this.els.sheetTitle.innerText = "Start Shift?";
+      this.els.sheetDesc.innerText = `Time: ${timeStr}`;
+      this.els.sheetConfirm.innerText = "CLOCK IN";
+      this.els.sheetConfirm.className = "btn-main"; // Pink
+
+      this.els.sheetConfirm.onclick = () => this.performClockAction("in");
+    } else {
+      // Preparing to Clock OUT
+      const shift = this.data.find((s) => s.id == this.currentShiftId);
+      let durationStr = "0h 0m";
+      if (shift) {
+        const diff = Math.floor((now.getTime() - shift.in) / 60000);
+        durationStr = this.minsToHm(diff);
+      }
+
+      this.els.sheetTitle.innerText = "End Shift?";
+      this.els.sheetDesc.innerText = `Duration: ${durationStr}`;
+      this.els.sheetConfirm.innerText = "CLOCK OUT";
+      this.els.sheetConfirm.className = "btn-main clock-out"; // Blue
+
+      this.els.sheetConfirm.onclick = () => this.performClockAction("out");
+    }
+
+    // Show Sheet
+    this.els.sheetCancel.onclick = () => this.closeActionSheet();
+    this.els.sheetOverlay.classList.remove("hidden");
+    this.els.sheet.classList.remove("hidden");
+  }
+
+  closeActionSheet() {
+    this.els.sheetOverlay.classList.add("hidden");
+    this.els.sheet.classList.add("hidden");
+  }
+
+  performClockAction(action) {
+    this.closeActionSheet();
     const now = new Date();
     const timeStr = this.formatTime(now);
     let msg = "";
-    let actionType = "";
 
-    if (this.status === "pending") {
-      // RESUME logic: Cancel the pending clock-out
-      this.cancelClockOut();
-      return;
-    }
-
-    if (this.status === "out") {
-      // Clock IN
+    if (action === "in") {
+      // --- CLOCK IN ---
       const newShift = {
         id: Date.now(),
         dateObj: now.toISOString(),
@@ -195,113 +238,55 @@ class TimeTracker {
       this.data.unshift(newShift);
       this.currentShiftId = newShift.id;
       this.status = "in";
+
       this.showQuote();
-      msg = `${timeStr} ${this.userName} - clock in`;
-      actionType = "Clock In";
       this.startTimerLoop();
 
-      this.save();
-      this.renderUI();
-      this.copyToClipboard(msg);
-      this.els.previewText.innerText = msg;
-      this.incrementBadge();
-
-      // Try to share if enabled
-      if (this.autoShare) this.shareText(msg);
+      msg = `${timeStr} ${this.userName} - clock in`;
 
       this.scheduleCloudSync(newShift.id, {
         name: this.userName,
-        action: actionType,
+        action: "Clock In",
         id: newShift.id, // Client ID for DB
         timestamp: now.toISOString(),
         localTime: timeStr,
       });
     } else {
-      // Start PENDING Clock OUT
+      // --- CLOCK OUT ---
       const shift = this.data.find((s) => s.id == this.currentShiftId);
       if (shift) {
         shift.out = now.getTime();
         shift.duration = Math.floor((shift.out - shift.in) / 60000);
-        this.status = "pending";
 
-        // IMMEDIATE ACTION: Generate text & Copy
-        const timeStr = this.formatTime(now);
-        const msg = `${timeStr} ${this.userName} - clock out`;
-        this.copyToClipboard(msg);
-        this.els.previewText.innerText = msg;
-
-        // Try to share if enabled
-        if (this.autoShare) this.shareText(msg);
-
-        this.updateTimer(); // Update one last time to show final duration
-        this.stopTimerLoop(); // Stop main loop to prevent ring flickering
-        this.startResumeTimer();
+        this.scheduleCloudSync(shift.id + "_out", {
+          name: this.userName,
+          action: "Clock Out",
+          id: shift.id,
+          timestamp: now.toISOString(),
+          localTime: timeStr,
+        });
       }
-      this.renderUI();
+
+      this.status = "out";
+      this.currentShiftId = null;
+      this.stopTimerLoop();
+      this.hideQuote();
+
+      msg = `${timeStr} ${this.userName} - clock out`;
     }
-  }
 
-  startResumeTimer() {
-    this.resumeSeconds = 10;
-    if (this.resumeInterval) clearInterval(this.resumeInterval);
-
-    this.resumeInterval = setInterval(() => {
-      this.resumeSeconds--;
-      this.renderUI();
-      this.updateRingPending(this.resumeSeconds);
-
-      if (this.resumeSeconds <= 0) {
-        this.finalizeClockOut();
-      }
-    }, 1000);
-  }
-
-  cancelClockOut() {
-    clearInterval(this.resumeInterval);
-    const shift = this.data.find((s) => s.id == this.currentShiftId);
-    if (shift) {
-      shift.out = null;
-      shift.duration = 0;
-    }
-    this.status = "in";
-    this.startTimerLoop(); // Restart main loop
+    // Common Actions
     this.save();
     this.renderUI();
-  }
 
-  finalizeClockOut() {
-    clearInterval(this.resumeInterval);
-    const shift = this.data.find((s) => s.id == this.currentShiftId);
+    // Copy & Share
+    this.copyToClipboard(msg);
+    this.els.previewText.innerText = msg;
+    this.incrementBadge();
 
-    if (shift && shift.out - shift.in < 60000) {
-      // If it was an accidental short shift and they didn't resume, just delete it
-      this.data = this.data.filter((s) => s.id !== this.currentShiftId);
-      this.showToast("Short shift discarded");
-    } else {
-      const now = new Date(shift.out);
-      const timeStr = this.formatTime(now);
-      const msg = `${timeStr} ${this.userName} - clock out`; // Re-generate just for sync payload
-
-      // Note: We already copied to clipboard in toggleClock
-      this.els.previewText.innerText = msg;
-      this.incrementBadge();
-      this.showToast("Shift saved");
-
-      this.scheduleCloudSync(shift.id + "_out", {
-        name: this.userName,
-        action: "Clock Out",
-        id: shift.id, // Link to original shift
-        timestamp: now.toISOString(),
-        localTime: timeStr,
-      });
+    if (this.autoShare) {
+      this.shareText(msg);
     }
-
-    this.status = "out";
-    this.currentShiftId = null;
-    this.stopTimerLoop();
-    this.hideQuote();
-    this.save();
-    this.renderUI();
   }
 
   async addSpecialDay(type) {
@@ -427,6 +412,7 @@ class TimeTracker {
       const response = await fetch("/api/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        keepalive: true, // Ensures request completes even if app closes
         body: JSON.stringify(payload),
       });
 
@@ -515,12 +501,6 @@ class TimeTracker {
       .toString()
       .padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
     this.updateRing(totalSeconds);
-  }
-
-  updateRingPending(seconds) {
-    const C = 691;
-    let progress = seconds / 10;
-    this.els.ringPink.style.strokeDashoffset = C - progress * C;
   }
 
   updateRing(totalSeconds) {
@@ -843,13 +823,7 @@ class TimeTracker {
 
   // UI Logic
   renderUI() {
-    if (this.status === "pending") {
-      this.els.mainBtn.innerText = `RESUME (${this.resumeSeconds}s)`;
-      this.els.mainBtn.classList.add("clock-out");
-      this.els.mainBtn.classList.add("pending");
-      this.els.status.innerText = "ENDING SHIFT...";
-      this.els.status.style.color = "var(--pink)";
-    } else if (this.status === "in") {
+    if (this.status === "in") {
       this.els.mainBtn.innerText = "CLOCK OUT";
       this.els.mainBtn.classList.add("clock-out");
       this.els.mainBtn.classList.remove("pending");
