@@ -558,6 +558,14 @@ select {
   border-radius: 10px;
   cursor: pointer;
 }
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+.btn-row .btn-outline {
+  flex: 1;
+}
 .btn-danger {
   width: 100%;
   padding: 10px;

@@ -58,6 +58,7 @@ class TimeTracker {
       sheetDesc: document.getElementById("sheet-desc"),
       sheetConfirm: document.getElementById("sheet-confirm"),
       sheetCancel: document.getElementById("sheet-cancel"),
+      restoreInput: document.getElementById("restore-file"),
     };
 
     this.init();
@@ -142,6 +143,9 @@ class TimeTracker {
       this.renderReport();
       this.renderHistoryList();
     });
+
+    // Restore File Listener
+    this.els.restoreInput.addEventListener("change", (e) => this.importData(e));
 
     // Resume state
     if (this.status === "in") {
@@ -787,6 +791,51 @@ class TimeTracker {
     document.body.appendChild(a);
     a.click();
     a.remove();
+  }
+
+  triggerRestore() {
+    this.els.restoreInput.click();
+  }
+
+  async importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importedData = JSON.parse(text);
+
+      if (!Array.isArray(importedData)) {
+        throw new Error("Invalid file format");
+      }
+
+      // Merge Logic: Add only items that don't exist (based on ID)
+      let addedCount = 0;
+      const existingIds = new Set(this.data.map((i) => i.id));
+
+      importedData.forEach((item) => {
+        if (item.id && !existingIds.has(item.id)) {
+          this.data.push(item);
+          existingIds.add(item.id);
+          addedCount++;
+        }
+      });
+
+      // Re-sort data by date (newest first)
+      this.data.sort((a, b) => new Date(b.dateObj) - new Date(a.dateObj));
+
+      this.save();
+      this.renderHistoryList();
+      this.renderReport();
+      this.showToast(
+        addedCount > 0 ? `Restored ${addedCount} entries` : "No new data found"
+      );
+    } catch (e) {
+      console.error(e);
+      this.showToast("Error reading backup file");
+    }
+    // Reset input to allow selecting the same file again if needed
+    event.target.value = "";
   }
 
   save() {

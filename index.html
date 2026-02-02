@@ -133,13 +133,20 @@
           <button class="btn-outline" onclick="app.copyReport()">
             Copy Full Report
           </button>
-          <button
-            class="btn-outline"
-            style="margin-top: 10px"
-            onclick="app.exportData()"
-          >
-            Backup Data (JSON)
-          </button>
+          <div class="btn-row">
+            <button class="btn-outline" onclick="app.exportData()">
+              Backup
+            </button>
+            <button class="btn-outline" onclick="app.triggerRestore()">
+              Restore
+            </button>
+          </div>
+          <input
+            type="file"
+            id="restore-file"
+            accept=".json"
+            style="display: none"
+          />
 
           <ul id="history-list"></ul>
 
