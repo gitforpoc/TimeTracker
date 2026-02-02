@@ -16,7 +16,8 @@ class TimeTracker {
     this.unreadLogs = 0;
     this.timerInterval = null;
     this.lastClickTime = 0; // For debounce
-    this.syncTimeouts = new Map(); // Store timeouts for delayed cloud sync
+    this.syncQueue = JSON.parse(localStorage.getItem("tt_syncQueue") || "[]");
+    this.isSyncing = false;
 
     // Quotes for motivation
     this.quotes = [
@@ -66,6 +67,10 @@ class TimeTracker {
     // Restore user name
     this.els.username.value = this.userName;
     this.checkInputState();
+
+    // Try to sync any offline data on load
+    this.processSyncQueue();
+    window.addEventListener("online", () => this.processSyncQueue());
 
     // Restore Auto-Share setting
     this.els.autoShareToggle.checked = this.autoShare;
@@ -394,34 +399,46 @@ class TimeTracker {
   }
 
   scheduleCloudSync(id, payload) {
-    // If there's an existing timeout for this ID, clear it
-    if (this.syncTimeouts.has(id)) clearTimeout(this.syncTimeouts.get(id));
+    // 1. Add to queue immediately
+    this.syncQueue.push({ id, payload });
+    localStorage.setItem("tt_syncQueue", JSON.stringify(this.syncQueue));
 
-    const timeout = setTimeout(() => {
-      this.sendToCloud(payload);
-      this.syncTimeouts.delete(id);
-    }, 60000); // 1 minute delay
+    // 2. Try to send immediately
+    this.processSyncQueue();
+  }
 
-    this.syncTimeouts.set(id, timeout);
+  async processSyncQueue() {
+    if (!navigator.onLine || this.isSyncing || this.syncQueue.length === 0)
+      return;
+
+    this.isSyncing = true;
+    const queueCopy = [...this.syncQueue];
+
+    for (const item of queueCopy) {
+      try {
+        await this.sendToCloud(item.payload);
+        // Success: remove from queue
+        this.syncQueue = this.syncQueue.filter((i) => i.id !== item.id);
+        localStorage.setItem("tt_syncQueue", JSON.stringify(this.syncQueue));
+      } catch (error) {
+        console.error("Sync failed for item", item.id);
+        break; // Stop processing if one fails (preserve order)
+      }
+    }
+    this.isSyncing = false;
   }
 
   async sendToCloud(payload) {
-    if (!navigator.onLine) return;
+    // Removed try/catch here to let processSyncQueue handle errors
+    const response = await fetch("/api/submit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify(payload),
+    });
 
-    try {
-      const response = await fetch("/api/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        keepalive: true, // Ensures request completes even if app closes
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || response.statusText);
-      }
-    } catch (error) {
-      this.showToast("⚠️ Cloud Sync Error: " + error.message);
+    if (!response.ok) {
+      throw new Error(response.statusText);
     }
   }
 
