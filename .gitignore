@@ -1,2 +1,4 @@
 node_modules
 .DS_Store
+*.gs
+.claude/settings.local.json

@@ -66,6 +66,18 @@ export default async function handler(req, res) {
         .update({ comment: comment })
         .eq("client_id", targetId));
     } else {
+      // Dedup guard: check if this exact log already exists (syncQueue retries)
+      const { data: existing } = await supabase
+        .from("logs")
+        .select("id")
+        .eq("client_id", id)
+        .eq("action", action)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        return { success: true, deduplicated: true };
+      }
+
       // Insert new record
       ({ data, error } = await supabase.from("logs").insert([
         {
@@ -73,7 +85,7 @@ export default async function handler(req, res) {
           action: action,
           client_time: timestamp,
           local_string: localTime,
-          client_id: id, // Important for linking comments later
+          client_id: id,
           payload: req.body,
         },
       ]));
