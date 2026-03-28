@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     // 4. Building the database query
     // We want to retrieve shifts that started within the selected period
     let query = supabase
-      .from("shifts")
+      .from("tt_shifts")
       .select("*")
       .gte("clock_in", `${start}T00:00:00`) // Greater than or equal to the start of the day
       .lte("clock_in", `${end}T23:59:59`) // Less than or equal to the end of the day

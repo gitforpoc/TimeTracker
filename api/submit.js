@@ -62,13 +62,13 @@ export default async function handler(req, res) {
     if (type === "comment") {
       // Update existing record
       ({ data, error } = await supabase
-        .from("logs")
+        .from("tt_logs")
         .update({ comment: comment })
         .eq("client_id", targetId));
     } else {
       // Dedup guard: check if this exact log already exists (syncQueue retries)
       const { data: existing } = await supabase
-        .from("logs")
+        .from("tt_logs")
         .select("id")
         .eq("client_id", id)
         .eq("action", action)
@@ -79,7 +79,7 @@ export default async function handler(req, res) {
       }
 
       // Insert new record
-      ({ data, error } = await supabase.from("logs").insert([
+      ({ data, error } = await supabase.from("tt_logs").insert([
         {
           user_name: cleanName,
           action: action,
