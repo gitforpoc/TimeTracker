@@ -2,6 +2,7 @@ import "../style.css";
 import { QUOTES } from "./constants.js";
 import { store } from "./store.js";
 import { sync } from "./sync.js";
+import { checkAuth } from "./auth.js";
 import { initTimer, startTimerLoop, stopTimerLoop } from "./timer.js";
 import { showDialog } from "./dialogs.js";
 import {
@@ -267,9 +268,27 @@ async function addSpecialDay(type) {
   });
 }
 
+// --- SSO Auth ---
+let isAuthenticated = false;
+
+async function initAuth() {
+  const auth = await checkAuth();
+  if (auth) {
+    isAuthenticated = true;
+    store.saveUser(auth.name);
+    els.username.value = auth.name;
+    els.username.readOnly = true;
+    els.username.classList.add("locked");
+  }
+  checkInputState();
+}
+
 // --- Event Listeners ---
 els.username.value = store.userName;
 checkInputState();
+
+// Start SSO check (non-blocking)
+initAuth();
 
 sync.processQueue();
 window.addEventListener("online", () => sync.processQueue());
@@ -281,6 +300,11 @@ els.autoShareToggle.addEventListener("change", (e) => {
 
 els.username.addEventListener("input", checkInputState);
 els.username.addEventListener("change", async (e) => {
+  if (isAuthenticated) {
+    // Revert — authenticated users can't change name
+    els.username.value = store.userName;
+    return;
+  }
   const newName = e.target.value.trim();
   const oldName = store.userName;
 

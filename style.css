@@ -127,6 +127,11 @@ header {
 #username.filled {
   border-bottom-color: transparent;
 }
+#username.locked {
+  border-bottom-color: transparent;
+  opacity: 0.85;
+  pointer-events: none;
+}
 
 /* Shake Animation */
 @keyframes shake {
