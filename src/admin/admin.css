@@ -313,7 +313,7 @@ table {
 
 thead {
   position: sticky;
-  top: 90px;
+  top: 0;
   z-index: 10;
 }
 
@@ -1062,9 +1062,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     padding: 8px 8px;
   }
 
-  thead {
-    top: 70px;
-  }
 
   /* Shifts: hide table, show cards */
   #shifts-table {
@@ -1090,9 +1087,6 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     font-size: 13px;
   }
 
-  thead {
-    top: 60px;
-  }
 }
 
 /* ===== Map & Geozones ===== */
