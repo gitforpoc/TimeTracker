@@ -3,6 +3,7 @@ import { checkAdminAuth, getSupabaseClient } from "../auth.js";
 
 // --- State ---
 let supabase = null;
+let authToken = null;
 let currentTab = "status";
 let shiftsData = [];
 let currentPage = 0;
@@ -24,6 +25,8 @@ async function init() {
   }
 
   supabase = getSupabaseClient();
+  const { data: { session } } = await supabase.auth.getSession();
+  authToken = session?.access_token;
   $("#admin-name").textContent = auth.name;
   $("#auth-gate").classList.add("hidden");
   $("#dashboard").classList.remove("hidden");
@@ -138,7 +141,7 @@ async function loadShifts() {
 
   let query = supabase
     .from("tt_shifts")
-    .select("user_name, clock_in, clock_out, duration_minutes, type, comment")
+    .select("id, user_name, clock_in, clock_out, duration_minutes, type, comment")
     .gte("clock_in", `${start}T00:00:00`)
     .lte("clock_in", `${end}T23:59:59`)
     .order("clock_in", { ascending: false })
@@ -183,7 +186,7 @@ function renderShifts() {
       const typeLabel =
         s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "";
 
-      return `<tr class="${s.type !== 'work' ? 'row-special' : ''}">
+      return `<tr class="${s.type !== 'work' ? 'row-special' : ''}" data-id="${s.id}">
         <td>${date}</td>
         <td>${s.user_name}</td>
         <td>${inTime}</td>
@@ -191,6 +194,7 @@ function renderShifts() {
         <td>${hours}</td>
         <td>${typeLabel}</td>
         <td>${s.comment || ""}</td>
+        <td><button class="btn-edit" data-id="${s.id}">Edit</button></td>
       </tr>`;
     })
     .join("");
@@ -271,5 +275,104 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove("show"), 2000);
 }
 
+// --- Edit Modal ---
+function setupEditListeners() {
+  document.addEventListener("click", (e) => {
+    if (!e.target.classList.contains("btn-edit")) return;
+    const id = Number(e.target.dataset.id);
+    const shift = shiftsData.find((s) => s.id === id);
+    if (shift) openEditModal(shift);
+  });
+
+  $("#edit-cancel").addEventListener("click", closeEditModal);
+  $("#edit-overlay").addEventListener("click", closeEditModal);
+  $("#edit-save").addEventListener("click", saveEdit);
+}
+
+function openEditModal(shift) {
+  const modal = $("#edit-modal");
+  modal.dataset.shiftId = shift.id;
+
+  $("#edit-employee").textContent = shift.user_name;
+  $("#edit-clock-in").value = toLocalDatetimeStr(shift.clock_in);
+  $("#edit-clock-out").value = shift.clock_out ? toLocalDatetimeStr(shift.clock_out) : "";
+  $("#edit-type").value = shift.type;
+  $("#edit-comment").value = shift.comment || "";
+  $("#edit-reason").value = "";
+
+  modal.classList.remove("hidden");
+  $("#edit-overlay").classList.remove("hidden");
+}
+
+function closeEditModal() {
+  $("#edit-modal").classList.add("hidden");
+  $("#edit-overlay").classList.add("hidden");
+}
+
+async function saveEdit() {
+  const shiftId = Number($("#edit-modal").dataset.shiftId);
+  const shift = shiftsData.find((s) => s.id === shiftId);
+  if (!shift) return;
+
+  const changes = {};
+  const newClockIn = new Date($("#edit-clock-in").value).toISOString();
+  const newClockOut = $("#edit-clock-out").value
+    ? new Date($("#edit-clock-out").value).toISOString()
+    : null;
+  const newType = $("#edit-type").value;
+  const newComment = $("#edit-comment").value.trim();
+  const reason = $("#edit-reason").value.trim();
+
+  if (newClockIn !== shift.clock_in) changes.clock_in = newClockIn;
+  if (newClockOut !== shift.clock_out) changes.clock_out = newClockOut;
+  if (newType !== shift.type) changes.type = newType;
+  if (newComment !== (shift.comment || "")) changes.comment = newComment || null;
+
+  if (Object.keys(changes).length === 0) {
+    closeEditModal();
+    return;
+  }
+
+  $("#edit-save").disabled = true;
+  $("#edit-save").textContent = "Saving...";
+
+  try {
+    const res = await fetch("/api/edit-shift", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({ shiftId, changes, reason }),
+    });
+
+    const result = await res.json();
+
+    if (!res.ok) {
+      showToast(result.error || "Error saving");
+      return;
+    }
+
+    showToast(`Updated ${result.edits} field(s)`);
+    closeEditModal();
+    loadShifts(); // Reload to show updated data
+  } catch (err) {
+    showToast("Network error");
+    console.error(err);
+  } finally {
+    $("#edit-save").disabled = false;
+    $("#edit-save").textContent = "Save";
+  }
+}
+
+function toLocalDatetimeStr(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
+}
+
 // --- Start ---
+setupEditListeners();
 init();

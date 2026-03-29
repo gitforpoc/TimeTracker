@@ -431,6 +431,117 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: var(--pink-glow);
 }
 
+/* ---- Edit Button ---- */
+
+.btn-edit {
+  font-family: var(--font);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-edit:hover {
+  color: var(--pink);
+  border-color: var(--border-active);
+  background: var(--pink-dim);
+}
+
+/* ---- Modal ---- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+}
+
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--navy);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: min(420px, 90vw);
+  z-index: 101;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.modal h3 {
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 20px;
+  color: var(--text);
+}
+
+.modal h3 span {
+  color: var(--pink);
+}
+
+.modal-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.modal-fields input,
+.modal-fields select {
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 8px 10px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.modal-fields input:focus,
+.modal-fields select:focus {
+  border-color: var(--border-active);
+}
+
+.modal-fields input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.7);
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.btn-save {
+  background: var(--pink-dim) !important;
+  border-color: rgba(255, 57, 154, 0.3) !important;
+  color: var(--pink) !important;
+}
+
+.btn-save:hover {
+  background: var(--pink-glow) !important;
+}
+
 /* ---- Toast ---- */
 
 .toast {

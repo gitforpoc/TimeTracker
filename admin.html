@@ -95,6 +95,7 @@
               <th>Hours</th>
               <th>Type</th>
               <th>Comment</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="shifts-body"></tbody>
@@ -106,6 +107,42 @@
           <button id="next-page" class="btn-sm">Next →</button>
         </div>
       </section>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-overlay" class="modal-overlay hidden"></div>
+    <div id="edit-modal" class="modal hidden">
+      <h3>Edit Shift — <span id="edit-employee"></span></h3>
+      <div class="modal-fields">
+        <label>
+          Clock In
+          <input type="datetime-local" id="edit-clock-in" />
+        </label>
+        <label>
+          Clock Out
+          <input type="datetime-local" id="edit-clock-out" />
+        </label>
+        <label>
+          Type
+          <select id="edit-type">
+            <option value="work">Work</option>
+            <option value="day_off">Day Off</option>
+            <option value="paid_off">Paid Off</option>
+          </select>
+        </label>
+        <label>
+          Comment
+          <input type="text" id="edit-comment" placeholder="Optional" />
+        </label>
+        <label>
+          Reason for edit
+          <input type="text" id="edit-reason" placeholder="Why are you editing?" />
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="edit-cancel" class="btn-sm">Cancel</button>
+        <button id="edit-save" class="btn-sm btn-save">Save</button>
+      </div>
     </div>
 
     <div id="toast" class="toast">Copied!</div>
