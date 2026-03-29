@@ -31,10 +31,13 @@ async function init() {
   $("#auth-gate").classList.add("hidden");
   $("#dashboard").classList.remove("hidden");
 
-  // Set default date range (current week)
+  // Set default date range (current week, Mon-today)
   const today = new Date();
   const monday = new Date(today);
-  monday.setDate(today.getDate() - today.getDay() + 1);
+  const dayOfWeek = today.getDay();
+  // Sunday=0 → go back 6 days; Monday=1 → 0; Tuesday=2 → 1; etc.
+  const daysBack = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  monday.setDate(today.getDate() - daysBack);
   $("#filter-start").value = formatDateISO(monday);
   $("#filter-end").value = formatDateISO(today);
 
@@ -323,8 +326,14 @@ async function saveEdit() {
   const newComment = $("#edit-comment").value.trim();
   const reason = $("#edit-reason").value.trim();
 
-  if (newClockIn !== shift.clock_in) changes.clock_in = newClockIn;
-  if (newClockOut !== shift.clock_out) changes.clock_out = newClockOut;
+  // Compare by epoch ms to avoid ISO string format mismatches
+  const oldInMs = shift.clock_in ? new Date(shift.clock_in).getTime() : 0;
+  const oldOutMs = shift.clock_out ? new Date(shift.clock_out).getTime() : 0;
+  const newInMs = new Date(newClockIn).getTime();
+  const newOutMs = newClockOut ? new Date(newClockOut).getTime() : 0;
+
+  if (newInMs !== oldInMs) changes.clock_in = newClockIn;
+  if (newOutMs !== oldOutMs) changes.clock_out = newClockOut;
   if (newType !== shift.type) changes.type = newType;
   if (newComment !== (shift.comment || "")) changes.comment = newComment || null;
 

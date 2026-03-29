@@ -45,6 +45,13 @@ export function showDialog(title, inputType = false, defaultValue = "") {
     confirmBtn.onclick = () => {
       if (inputType === "date") close(dateInput.value);
       else if (inputType === "text") close(textInput.value);
+      else if (inputType === "html") {
+        // Collect values BEFORE dialog closes and removes elements
+        const inputs = bodyEl.querySelectorAll(".dialog-custom input, .dialog-custom select");
+        const values = {};
+        inputs.forEach((el) => { if (el.id) values[el.id] = el.value; });
+        close(values);
+      }
       else close(true);
     };
     cancelBtn.onclick = () => close(false);

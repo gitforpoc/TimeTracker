@@ -349,18 +349,24 @@ async function editShift(item) {
     </div>
   `;
 
-  const confirmed = await showDialog(html, "html");
-  if (!confirmed) return;
+  const result = await showDialog(html, "html");
+  if (!result) return;
 
-  const newIn = document.getElementById("edit-in").value;
-  const newOut = document.getElementById("edit-out").value;
-  const newComment = document.getElementById("edit-cmt").value.trim();
+  // result is { "edit-in": "...", "edit-out": "...", "edit-cmt": "..." }
+  const newIn = result["edit-in"];
+  const newOut = result["edit-out"];
+  const newComment = (result["edit-cmt"] || "").trim();
 
   const changes = {};
-  if (newIn && new Date(newIn).toISOString() !== shift.clock_in) {
+  const oldInMs = shift.clock_in ? new Date(shift.clock_in).getTime() : 0;
+  const oldOutMs = shift.clock_out ? new Date(shift.clock_out).getTime() : 0;
+  const newInMs = newIn ? new Date(newIn).getTime() : 0;
+  const newOutMs = newOut ? new Date(newOut).getTime() : 0;
+
+  if (newIn && newInMs !== oldInMs) {
     changes.clock_in = new Date(newIn).toISOString();
   }
-  if (newOut && new Date(newOut).toISOString() !== shift.clock_out) {
+  if (newOut && newOutMs !== oldOutMs) {
     changes.clock_out = new Date(newOut).toISOString();
   }
   if (newComment !== (shift.comment || "")) {
