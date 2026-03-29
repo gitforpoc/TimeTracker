@@ -134,11 +134,38 @@ function openActionSheet() {
   els.sheetCancel.onclick = closeActionSheet;
   els.sheetOverlay.classList.remove("hidden");
   els.sheet.classList.remove("hidden");
+  requestLocation(); // refresh GPS before confirm
 }
 
 function closeActionSheet() {
   els.sheetOverlay.classList.add("hidden");
   els.sheet.classList.add("hidden");
+}
+
+// --- Location & Timezone ---
+const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+let lastCoords = null;
+
+function requestLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      lastCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    },
+    () => { lastCoords = null; },
+    { timeout: 5000, maximumAge: 60000 }
+  );
+}
+
+// Pre-fetch location so it's ready when user clicks clock in/out
+requestLocation();
+
+function getMetaFields() {
+  return {
+    timezone: userTimezone,
+    lat: lastCoords?.lat ?? null,
+    lng: lastCoords?.lng ?? null,
+  };
 }
 
 // --- Core Actions ---
@@ -173,6 +200,7 @@ function performClockAction(action) {
       id: newShift.id,
       timestamp: now.toISOString(),
       localTime: timeStr,
+      ...getMetaFields(),
     });
   } else {
     const shift = store.findShift(store.currentShiftId);
@@ -186,6 +214,7 @@ function performClockAction(action) {
         id: shift.id,
         timestamp: now.toISOString(),
         localTime: timeStr,
+        ...getMetaFields(),
       });
     }
 
@@ -265,6 +294,7 @@ async function addSpecialDay(type) {
     id: entryId,
     timestamp: selectedDate.toISOString(),
     localTime: "N/A",
+    timezone: userTimezone,
   });
 }
 

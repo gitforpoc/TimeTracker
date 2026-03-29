@@ -74,3 +74,46 @@ export async function checkAuth() {
     return null;
   }
 }
+
+/**
+ * Check admin/supervisor access for timetracker.
+ * Returns { name, userId, role } or null if no access.
+ */
+export async function checkAdminAuth() {
+  const client = getClient();
+  if (!client) return null;
+
+  try {
+    const {
+      data: { session },
+    } = await client.auth.getSession();
+    if (!session) return null;
+
+    const [{ data: profile }, { data: access }] = await Promise.all([
+      client.from("profiles").select("name").eq("id", session.user.id).single(),
+      client
+        .from("user_access")
+        .select("role")
+        .eq("app_id", "timetracker")
+        .eq("user_id", session.user.id)
+        .single(),
+    ]);
+
+    if (!access || !["admin", "supervisor"].includes(access.role)) return null;
+
+    return {
+      name: profile?.name || "Admin",
+      userId: session.user.id,
+      role: access.role,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Get Supabase client (for direct queries in admin dashboard).
+ */
+export function getSupabaseClient() {
+  return getClient();
+}

@@ -15,13 +15,8 @@ export default async function handler(req, res) {
       process.env.SUPABASE_SERVICE_ROLE_KEY
     );
 
-    // 1. Request the last 1000 logs (enough to determine the status of all active users)
-    // Sort from newest to oldest
-    const { data: logs, error } = await supabase
-      .from("tt_logs")
-      .select("user_name, action, client_time, local_string")
-      .order("client_time", { ascending: false })
-      .limit(1000);
+    // 1. Get latest log per user via RPC (1 row per user, not thousands)
+    const { data: logs, error } = await supabase.rpc("tt_get_user_statuses");
 
     if (error) throw error;
 

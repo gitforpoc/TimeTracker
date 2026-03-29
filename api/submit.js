@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   const taskSupabase = async () => {
     if (!SUPABASE_URL || !SUPABASE_KEY) return { skipped: true };
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    const { name, action, timestamp, localTime, type, targetId, comment, id } =
+    const { name, action, timestamp, localTime, type, targetId, comment, id, timezone, lat, lng } =
       req.body;
 
     // Sanitize name
@@ -87,6 +87,9 @@ export default async function handler(req, res) {
           local_string: localTime,
           client_id: id,
           payload: req.body,
+          timezone: timezone || null,
+          lat: lat != null ? lat : null,
+          lng: lng != null ? lng : null,
         },
       ]));
     }

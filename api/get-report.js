@@ -38,24 +38,31 @@ export default async function handler(req, res) {
         .json({ error: "Missing start or end date parameters." });
     }
 
-    // 4. Building the database query
-    // We want to retrieve shifts that started within the selected period
+    // 4. Enforce max date range (90 days) to prevent accidental huge queries
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const diffDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+    if (diffDays > 90) {
+      return res
+        .status(400)
+        .json({ error: "Date range cannot exceed 90 days." });
+    }
+
+    // 5. Building the database query — only select needed columns
     let query = supabase
       .from("tt_shifts")
-      .select("*")
-      .gte("clock_in", `${start}T00:00:00`) // Greater than or equal to the start of the day
-      .lte("clock_in", `${end}T23:59:59`) // Less than or equal to the end of the day
-      .order("clock_in", { ascending: true }); // Sorting: oldest at the top
+      .select("user_name, clock_in, clock_out, duration_minutes, type, comment")
+      .gte("clock_in", `${start}T00:00:00`)
+      .lte("clock_in", `${end}T23:59:59`)
+      .order("clock_in", { ascending: true })
+      .limit(5000);
 
-    // If a specific employee is requested, add a filter
     if (name) {
-      // Use ilike for case-insensitivity (Jairo = jairo)
-      // Trim extra spaces from the name if they were passed
       const cleanName = name.trim();
       query = query.ilike("user_name", `%${cleanName}%`);
     }
 
-    // 5. Execute the query
+    // 6. Execute the query
     const { data, error } = await query;
 
     if (error) {

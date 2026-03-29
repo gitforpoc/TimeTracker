@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TimeTracker Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Auth gate: shown while checking access -->
+    <div id="auth-gate">
+      <div class="gate-message">Checking access...</div>
+    </div>
+
+    <!-- Denied screen -->
+    <div id="access-denied" class="hidden">
+      <div class="gate-message">
+        <h2>Access Denied</h2>
+        <p>You don't have admin access to TimeTracker.</p>
+        <a href="/">← Back to TimeTracker</a>
+      </div>
+    </div>
+
+    <!-- Main dashboard (hidden until auth passes) -->
+    <div id="dashboard" class="hidden">
+      <header class="admin-header">
+        <div class="header-left">
+          <a href="/" class="back-link">← TT</a>
+          <h1>TIME<span class="pink">TRACKER</span> <span class="admin-badge">ADMIN</span></h1>
+        </div>
+        <div class="header-right">
+          <span id="admin-name"></span>
+        </div>
+      </header>
+
+      <!-- Tab navigation -->
+      <nav class="tabs">
+        <button class="tab active" data-tab="status">Live Status</button>
+        <button class="tab" data-tab="shifts">Shift Log</button>
+      </nav>
+
+      <!-- Live Status tab -->
+      <section id="tab-status" class="tab-content">
+        <div class="status-header">
+          <span id="status-count"></span>
+          <button id="refresh-status" class="btn-sm">Refresh</button>
+        </div>
+        <table id="status-table">
+          <thead>
+            <tr>
+              <th>Employee</th>
+              <th>Status</th>
+              <th>Since</th>
+              <th>Duration</th>
+            </tr>
+          </thead>
+          <tbody id="status-body"></tbody>
+        </table>
+      </section>
+
+      <!-- Shift Log tab -->
+      <section id="tab-shifts" class="tab-content hidden">
+        <div class="filters">
+          <div class="filter-row">
+            <label>From <input type="date" id="filter-start" /></label>
+            <label>To <input type="date" id="filter-end" /></label>
+            <label>
+              Employee
+              <select id="filter-employee">
+                <option value="">All</option>
+              </select>
+            </label>
+            <button id="apply-filters" class="btn-sm">Apply</button>
+          </div>
+        </div>
+
+        <div class="shifts-summary">
+          <span id="shifts-count"></span>
+          <span id="shifts-hours"></span>
+          <button id="copy-table" class="btn-sm">Copy as Table</button>
+        </div>
+
+        <table id="shifts-table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Employee</th>
+              <th>Clock In</th>
+              <th>Clock Out</th>
+              <th>Hours</th>
+              <th>Type</th>
+              <th>Comment</th>
+            </tr>
+          </thead>
+          <tbody id="shifts-body"></tbody>
+        </table>
+
+        <div class="pagination">
+          <button id="prev-page" class="btn-sm" disabled>← Prev</button>
+          <span id="page-info"></span>
+          <button id="next-page" class="btn-sm">Next →</button>
+        </div>
+      </section>
+    </div>
+
+    <div id="toast" class="toast">Copied!</div>
+
+    <script type="module" src="/src/admin/main.js"></script>
+  </body>
+</html>
