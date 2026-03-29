@@ -116,6 +116,7 @@ async function fetchServerData() {
     const { data: shifts, error } = await supabase
       .from("tt_shifts")
       .select("id, clock_in, clock_out, duration_minutes, type, comment")
+      .eq("user_name", store.userName)
       .order("clock_in", { ascending: false })
       .limit(500);
 
