@@ -5,9 +5,28 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Api-Key");
 
   if (req.method === "OPTIONS") return res.status(200).end();
+
+  // --- Auth: Bearer token OR API key ---
+  const apiKey = req.headers["x-api-key"] || req.query.key;
+  const authHeader = req.headers.authorization;
+  const REPORT_API_KEY = process.env.REPORT_API_KEY;
+
+  let authorized = false;
+  if (apiKey && REPORT_API_KEY && apiKey === REPORT_API_KEY) {
+    authorized = true;
+  } else if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.replace("Bearer ", "");
+    const authClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data: { user } } = await authClient.auth.getUser(token);
+    if (user) authorized = true;
+  }
+
+  if (!authorized) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
 
   try {
     const supabase = createClient(

@@ -312,13 +312,20 @@ async function initAuth() {
     els.username.readOnly = true;
     els.username.classList.add("locked");
 
-    // Get token for edit-shift API
+    // Get token for APIs and set up sync
     const { getSupabaseClient } = await import("./auth.js");
     const client = getSupabaseClient();
     if (client) {
       const { data: { session } } = await client.auth.getSession();
       if (session) {
         setAuthState(true, session.access_token);
+
+        // Enable sync for authenticated users — fresh token on each call
+        sync.setTokenGetter(async () => {
+          const { data: { session: s } } = await client.auth.getSession();
+          return s?.access_token || null;
+        });
+        sync.processQueue();
       }
     }
   }
@@ -332,7 +339,7 @@ checkInputState();
 // Start SSO check (non-blocking)
 initAuth();
 
-sync.processQueue();
+// Sync resumes after auth (see initAuth). On reconnect — retry queue.
 window.addEventListener("online", () => sync.processQueue());
 
 els.autoShareToggle.checked = store.autoShare;

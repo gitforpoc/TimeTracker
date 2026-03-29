@@ -6,23 +6,32 @@ class SyncManager {
       localStorage.getItem(STORAGE_KEYS.SYNC_QUEUE) || "[]"
     );
     this.isSyncing = false;
+    this._getToken = null;
+  }
+
+  setTokenGetter(fn) {
+    this._getToken = fn;
   }
 
   schedule(id, payload) {
+    if (!this._getToken) return; // Guest mode — no sync
     this.queue.push({ id, payload });
     this._saveQueue();
     this.processQueue();
   }
 
   async processQueue() {
-    if (!navigator.onLine || this.isSyncing || this.queue.length === 0) return;
+    if (!this._getToken || !navigator.onLine || this.isSyncing || this.queue.length === 0) return;
+
+    const token = await this._getToken();
+    if (!token) return; // No valid session
 
     this.isSyncing = true;
     const queueCopy = [...this.queue];
 
     for (const item of queueCopy) {
       try {
-        await this._send(item.payload);
+        await this._send(item.payload, token);
         this.queue = this.queue.filter((i) => i.id !== item.id);
         this._saveQueue();
       } catch {
@@ -32,10 +41,13 @@ class SyncManager {
     this.isSyncing = false;
   }
 
-  async _send(payload) {
+  async _send(payload, token) {
     const response = await fetch("/api/submit", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
       keepalive: true,
       body: JSON.stringify(payload),
     });

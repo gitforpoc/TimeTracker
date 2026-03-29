@@ -10,13 +10,29 @@ export default async function handler(req, res) {
   );
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version"
+    "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization"
   );
 
   // Handle browser preflight request (OPTIONS)
   if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
+  }
+
+  // --- Auth: require Bearer token ---
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+  const authSupabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const { data: { user }, error: authError } = await authSupabase.auth.getUser(token);
+  if (authError || !user) {
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 
   // Get URLs and Keys
