@@ -2,12 +2,20 @@ import { store } from "./store.js";
 import { sync } from "./sync.js";
 import { showDialog } from "./dialogs.js";
 import { formatTime, formatDate, minsToHm, copyToClipboard, showToast } from "./utils.js";
+import { getSupabaseClient } from "./auth.js";
 
 let els = null;
 let currentReportText = "";
+let isUserAuthenticated = false;
+let authToken = null;
 
 export function initHistory(elements) {
   els = elements;
+}
+
+export function setAuthState(authenticated, token) {
+  isUserAuthenticated = authenticated;
+  authToken = token;
 }
 
 export function openHistory() {
@@ -158,6 +166,10 @@ export function renderHistoryList() {
       ? `<div class="comment-box">💬 ${item.comment}</div>`
       : "";
 
+    const editBtn = isUserAuthenticated
+      ? `<button class="edit-btn" data-id="${item.id}">EDIT</button>`
+      : "";
+
     div.innerHTML = `
       <div class="card-header">
         <span class="item-date">${formatDate(new Date(item.dateObj))}</span>
@@ -165,12 +177,16 @@ export function renderHistoryList() {
       </div>
       ${commentHtml}
       <div class="card-actions">
+        ${editBtn}
         <button class="comment-btn" data-id="${item.id}">💬</button>
         <button class="del-btn" data-id="${item.id}">DELETE</button>
       </div>
     `;
 
     // Event delegation
+    if (isUserAuthenticated) {
+      div.querySelector(".edit-btn").addEventListener("click", () => editShift(item));
+    }
     div.querySelector(".comment-btn").addEventListener("click", () => addComment(item.id));
     div.querySelector(".del-btn").addEventListener("click", () => deleteItem(item.id));
 
@@ -274,6 +290,118 @@ export async function importData(event) {
     showToast("Error reading backup file");
   }
   event.target.value = "";
+}
+
+// --- Edit Shift ---
+async function editShift(item) {
+  // Find server-side shift by matching clock_in time + user_name
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    showToast("Not connected to server");
+    return;
+  }
+
+  // Match by timestamp (item.in is epoch ms, shift.clock_in is ISO)
+  const clockInISO = item.in ? new Date(item.in).toISOString() : new Date(item.dateObj).toISOString();
+
+  const { data: shifts } = await supabase
+    .from("tt_shifts")
+    .select("id, clock_in, clock_out, duration_minutes, type, comment")
+    .eq("user_name", store.userName)
+    .gte("clock_in", new Date(new Date(clockInISO).getTime() - 60000).toISOString())
+    .lte("clock_in", new Date(new Date(clockInISO).getTime() + 60000).toISOString())
+    .limit(1);
+
+  if (!shifts || shifts.length === 0) {
+    showToast("Shift not found on server");
+    return;
+  }
+
+  const shift = shifts[0];
+
+  // Build edit dialog
+  const inStr = shift.clock_in ? toLocalInput(shift.clock_in) : "";
+  const outStr = shift.clock_out ? toLocalInput(shift.clock_out) : "";
+
+  const html = `
+    <div style="display:flex;flex-direction:column;gap:10px;text-align:left;">
+      <label style="font-size:12px;color:var(--gray);">Clock In
+        <input type="datetime-local" id="edit-in" value="${inStr}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
+      </label>
+      <label style="font-size:12px;color:var(--gray);">Clock Out
+        <input type="datetime-local" id="edit-out" value="${outStr}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
+      </label>
+      <label style="font-size:12px;color:var(--gray);">Comment
+        <input type="text" id="edit-cmt" value="${shift.comment || ""}" placeholder="Optional" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
+      </label>
+    </div>
+  `;
+
+  const confirmed = await showDialog(html, "html");
+  if (!confirmed) return;
+
+  const newIn = document.getElementById("edit-in").value;
+  const newOut = document.getElementById("edit-out").value;
+  const newComment = document.getElementById("edit-cmt").value.trim();
+
+  const changes = {};
+  if (newIn && new Date(newIn).toISOString() !== shift.clock_in) {
+    changes.clock_in = new Date(newIn).toISOString();
+  }
+  if (newOut && new Date(newOut).toISOString() !== shift.clock_out) {
+    changes.clock_out = new Date(newOut).toISOString();
+  }
+  if (newComment !== (shift.comment || "")) {
+    changes.comment = newComment || null;
+  }
+
+  if (Object.keys(changes).length === 0) {
+    showToast("No changes");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/edit-shift", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify({
+        shiftId: shift.id,
+        changes,
+        reason: "Employee self-edit",
+      }),
+    });
+
+    const result = await res.json();
+    if (!res.ok) {
+      showToast(result.error || "Error");
+      return;
+    }
+
+    // Update local data too
+    if (changes.clock_in) item.in = new Date(changes.clock_in).getTime();
+    if (changes.clock_out) {
+      item.out = new Date(changes.clock_out).getTime();
+      item.duration = Math.floor((item.out - item.in) / 60000);
+    }
+    if (changes.comment !== undefined) item.comment = changes.comment;
+    store.save();
+
+    showToast("Shift updated");
+    renderHistoryList();
+    renderReport();
+  } catch {
+    showToast("Network error");
+  }
+}
+
+function toLocalInput(iso) {
+  const d = new Date(iso);
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60000);
+  return local.toISOString().slice(0, 16);
 }
 
 function populatePeriods() {

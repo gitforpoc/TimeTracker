@@ -460,6 +460,16 @@ circle {
   gap: 10px;
   margin-top: 5px;
 }
+.edit-btn {
+  color: var(--pink);
+  background: none;
+  border: 1px solid var(--pink);
+  border-radius: 4px;
+  font-weight: bold;
+  padding: 4px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
 .del-btn {
   color: #ef4444;
   background: none;

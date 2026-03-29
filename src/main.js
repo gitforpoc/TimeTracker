@@ -7,6 +7,7 @@ import { initTimer, startTimerLoop, stopTimerLoop } from "./timer.js";
 import { showDialog } from "./dialogs.js";
 import {
   initHistory,
+  setAuthState,
   openHistory,
   closeHistory,
   handlePeriodChange,
@@ -309,6 +310,16 @@ async function initAuth() {
     els.username.value = auth.name;
     els.username.readOnly = true;
     els.username.classList.add("locked");
+
+    // Get token for edit-shift API
+    const { getSupabaseClient } = await import("./auth.js");
+    const client = getSupabaseClient();
+    if (client) {
+      const { data: { session } } = await client.auth.getSession();
+      if (session) {
+        setAuthState(true, session.access_token);
+      }
+    }
   }
   checkInputState();
 }

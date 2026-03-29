@@ -28,7 +28,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid session" });
     }
 
-    // 2. Check timetracker admin/supervisor role
+    // 2. Check permissions: admin/supervisor can edit any shift, regular users can edit own
     const { data: access } = await supabase
       .from("user_access")
       .select("role")
@@ -36,9 +36,16 @@ export default async function handler(req, res) {
       .eq("app_id", "timetracker")
       .single();
 
-    if (!access || !["admin", "supervisor"].includes(access.role)) {
-      return res.status(403).json({ error: "Insufficient permissions" });
-    }
+    const isAdmin = access && ["admin", "supervisor"].includes(access.role);
+
+    // Get user profile name (for ownership check)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("name")
+      .eq("id", user.id)
+      .single();
+
+    const editorName = profile?.name || user.email;
 
     // 3. Parse request
     const { shiftId, changes, reason } = req.body;
@@ -53,18 +60,14 @@ export default async function handler(req, res) {
       .eq("id", shiftId)
       .single();
 
+    // 5. Permission check: admin edits any, user edits own only
+    if (!isAdmin && shift?.user_name !== editorName) {
+      return res.status(403).json({ error: "You can only edit your own shifts" });
+    }
+
     if (shiftError || !shift) {
       return res.status(404).json({ error: "Shift not found" });
     }
-
-    // 5. Get editor name from profiles
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("name")
-      .eq("id", user.id)
-      .single();
-
-    const editorName = profile?.name || user.email;
 
     // 6. Build update and audit records
     const update = {};
