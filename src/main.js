@@ -149,14 +149,17 @@ const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 let lastCoords = null;
 
 function requestLocation() {
-  if (!store.geoEnabled || !navigator.geolocation) return;
-  navigator.geolocation.getCurrentPosition(
-    (pos) => {
-      lastCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    },
-    () => { lastCoords = null; },
-    { timeout: 5000, maximumAge: 60000 }
-  );
+  if (!store.geoEnabled || !navigator.geolocation) return Promise.resolve();
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        lastCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        resolve();
+      },
+      () => { lastCoords = null; resolve(); },
+      { timeout: 5000, maximumAge: 60000 }
+    );
+  });
 }
 
 // Pre-fetch location if enabled
@@ -171,8 +174,10 @@ function getMetaFields() {
 }
 
 // --- Core Actions ---
-function performClockAction(action) {
+async function performClockAction(action) {
   closeActionSheet();
+  // Wait for GPS if enabled (max 5s timeout built into requestLocation)
+  if (store.geoEnabled) await requestLocation();
   const now = new Date();
   const timeStr = formatTime(now);
   let msg = "";
