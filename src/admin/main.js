@@ -1362,10 +1362,9 @@ async function loadEmployeesTab() {
     groups[wh].push(name);
   });
 
-  // Populate warehouse filter
+  // Populate warehouse filter (preserve selection)
   const filterEl = $("#emp-warehouse-filter");
-  const existingOpts = filterEl.querySelectorAll("option");
-  // Keep "All" option, remove others
+  const savedFilter = filterEl.value;
   while (filterEl.options.length > 1) filterEl.remove(1);
   Object.keys(groups).sort().forEach((wh) => {
     const opt = document.createElement("option");
@@ -1373,7 +1372,7 @@ async function loadEmployeesTab() {
     opt.textContent = wh;
     filterEl.appendChild(opt);
   });
-
+  if (savedFilter) filterEl.value = savedFilter;
   const filterWh = filterEl.value;
 
   // Render
