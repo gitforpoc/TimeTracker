@@ -29,18 +29,20 @@ import {
   minsToHm,
 } from "./utils.js";
 
-// --- PWA Update ---
-const updateSW = registerSW({
-  onNeedRefresh() {
-    const banner = document.getElementById("update-banner");
-    banner.classList.remove("hidden");
-  },
-  onOfflineReady() {},
-});
+// --- PWA Update (production only) ---
+let updateSW = null;
+if (import.meta.env.PROD) {
+  updateSW = registerSW({
+    onNeedRefresh() {
+      document.getElementById("update-banner").classList.remove("hidden");
+    },
+    onOfflineReady() {},
+  });
 
-document.getElementById("update-btn").addEventListener("click", () => {
-  updateSW();
-});
+  document.getElementById("update-btn").addEventListener("click", () => {
+    updateSW(true);
+  });
+}
 
 // --- DOM Elements ---
 const els = {
