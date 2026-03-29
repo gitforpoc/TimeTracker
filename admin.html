@@ -10,6 +10,8 @@
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </head>
   <body>
     <!-- Auth gate: shown while checking access -->
@@ -44,6 +46,7 @@
           Live Status <span id="working-badge" class="tab-badge hidden">0</span>
         </button>
         <button class="tab" data-tab="shifts">Shift Log</button>
+        <button class="tab" data-tab="map">🗺️ Map</button>
       </nav>
 
       <!-- Live Status tab -->
@@ -80,6 +83,16 @@
               <select id="filter-employee">
                 <option value="">All</option>
                 <option value="__working__">Working now</option>
+              </select>
+            </label>
+            <label>
+              Zone
+              <select id="filter-zone">
+                <option value="">All</option>
+                <option value="green">🟢 Green</option>
+                <option value="yellow">🟡 Yellow</option>
+                <option value="red">🔴 Red</option>
+                <option value="none">⚪ No GPS</option>
               </select>
             </label>
             <button id="apply-filters" class="btn-sm">Apply</button>
@@ -128,6 +141,22 @@
           <button id="prev-page" class="btn-sm" disabled>← Prev</button>
           <span id="page-info"></span>
           <button id="next-page" class="btn-sm">Next →</button>
+        </div>
+      </section>
+      <!-- Map tab -->
+      <section id="tab-map" class="tab-content hidden">
+        <div id="map-container" style="height: calc(100vh - 140px); width: 100%; border-radius: 12px; overflow: hidden;"></div>
+        <!-- Zone editor sidebar -->
+        <div id="zone-panel" class="zone-panel hidden">
+          <h3 id="zone-panel-title">Edit Zone</h3>
+          <label>Name <input type="text" id="zone-name" /></label>
+          <label>Green radius (m) <input type="range" id="zone-green" min="50" max="500" step="10" /><span id="zone-green-val"></span></label>
+          <label>Yellow radius (m) <input type="range" id="zone-yellow" min="200" max="3000" step="50" /><span id="zone-yellow-val"></span></label>
+          <div class="zone-panel-actions">
+            <button id="zone-save" class="btn-sm btn-save">Save</button>
+            <button id="zone-delete" class="btn-sm btn-danger">Delete</button>
+            <button id="zone-cancel" class="btn-sm">Cancel</button>
+          </div>
         </div>
       </section>
     </div>

@@ -13,6 +13,11 @@ const PAGE_SIZE = 50;
 let statusInterval = null;
 let workingNames = []; // names of currently working employees
 let editOriginal = {}; // original values when edit modal opens
+let zonesData = []; // from tt_zones
+let leafletMap = null;
+let zoneLayers = []; // { zone, greenCircle, yellowCircle, marker }
+let employeeLayers = []; // employee markers on map
+let editingZone = null; // zone being edited
 
 // --- DOM ---
 const $ = (sel) => document.querySelector(sel);
@@ -48,6 +53,7 @@ async function init() {
   setupFilters();
   setupKeyboard();
   loadEmployeeList();
+  loadZones(); // preload zones for geo icons
   loadStatus();
 
   // Auto-refresh status every 60s
@@ -73,10 +79,9 @@ function setupTabs() {
       // Trigger transition after removing hidden
       requestAnimationFrame(() => target.classList.add("active-tab"));
 
-      // Auto-load shifts on tab switch
-      if (currentTab === "shifts") {
-        loadShifts();
-      }
+      // Auto-load on tab switch
+      if (currentTab === "shifts") loadShifts();
+      if (currentTab === "map") initMap();
     });
   });
 }
@@ -306,6 +311,17 @@ async function loadShifts() {
     }
   }
 
+  // Zone filter
+  const zoneFilter = ($("#filter-zone") || {}).value;
+  if (zoneFilter) {
+    shiftsData = shiftsData.filter((s) => {
+      const geo = geoMap[s.id];
+      if (zoneFilter === "none") return !geo;
+      if (!geo) return false;
+      return getZoneColor(geo.lat, geo.lng) === zoneFilter;
+    });
+  }
+
   renderShifts();
 }
 
@@ -413,6 +429,9 @@ function renderShifts() {
       </div>`;
     })
     .join("");
+
+  // Attach mini-map popups to geo icons
+  attachGeoPopups();
 }
 
 // --- Employee list ---
@@ -468,12 +487,352 @@ function copyShiftsTable() {
   navigator.clipboard.writeText(text).then(() => showToast("Copied!"));
 }
 
+// --- Haversine Distance (meters) ---
+function haversine(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function getZoneColor(lat, lng) {
+  if (!zonesData.length) return "none";
+  let best = "red";
+  for (const z of zonesData) {
+    const dist = haversine(lat, lng, z.lat, z.lng);
+    if (dist <= z.radius_green) return "green";
+    if (dist <= z.radius_yellow && best === "red") best = "yellow";
+  }
+  return best;
+}
+
+function geoZoneLabel(shiftId) {
+  const geo = geoMap[shiftId];
+  if (!geo) return { color: "none", dist: null };
+  const color = getZoneColor(geo.lat, geo.lng);
+  // Distance to nearest zone center
+  let dist = null;
+  if (zonesData.length) {
+    dist = Math.round(haversine(geo.lat, geo.lng, zonesData[0].lat, zonesData[0].lng));
+  }
+  return { color, dist };
+}
+
 // --- Helpers ---
 function geoIcon(shiftId) {
   const geo = geoMap[shiftId];
-  if (!geo) return `<span class="geo-icon geo-none" title="No GPS">📍</span>`;
-  const url = `https://www.google.com/maps?q=${geo.lat},${geo.lng}`;
-  return `<a href="${url}" target="_blank" rel="noopener" class="geo-icon geo-ok" title="${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}">📍</a>`;
+  if (!geo) return `<span class="geo-icon geo-none" title="No GPS" data-zone="none">📍</span>`;
+  const { color, dist } = geoZoneLabel(shiftId);
+  const icons = { green: "🟢", yellow: "🟡", red: "🔴" };
+  const icon = icons[color] || "📍";
+  const distText = dist !== null ? `${dist}m from zone` : "";
+  return `<span class="geo-icon geo-zone geo-${color}" data-zone="${color}" data-shift="${shiftId}" title="${distText}" style="cursor:pointer">${icon}</span>`;
+}
+
+// --- Map ---
+async function initMap() {
+  // Load zones if not loaded
+  if (!zonesData.length) await loadZones();
+
+  if (leafletMap) {
+    leafletMap.invalidateSize();
+    await loadEmployeesOnMap();
+    return;
+  }
+
+  const center = zonesData.length ? [zonesData[0].lat, zonesData[0].lng] : [40.7228, -73.9060];
+
+  leafletMap = L.map("map-container").setView(center, 15);
+
+  // Tile layers
+  const dark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19,
+  });
+  const street = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    maxZoom: 19,
+  });
+  const satellite = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    attribution: '&copy; Esri',
+    maxZoom: 19,
+  });
+
+  dark.addTo(leafletMap);
+  L.control.layers({ "Dark": dark, "Street": street, "Satellite": satellite }).addTo(leafletMap);
+
+  // Render zones
+  renderZonesOnMap();
+
+  // Load employees
+  await loadEmployeesOnMap();
+
+  // Click map to add zone
+  leafletMap.on("click", (e) => {
+    if (editingZone) return;
+    openZonePanel({
+      id: null,
+      name: "New Zone",
+      lat: e.latlng.lat,
+      lng: e.latlng.lng,
+      radius_green: 200,
+      radius_yellow: 1000,
+    });
+  });
+
+  // Zone panel controls
+  setupZonePanel();
+}
+
+async function loadZones() {
+  const { data } = await supabase.from("tt_zones").select("*").order("id");
+  zonesData = data || [];
+}
+
+function renderZonesOnMap() {
+  zoneLayers.forEach((zl) => {
+    leafletMap.removeLayer(zl.yellowCircle);
+    leafletMap.removeLayer(zl.greenCircle);
+    leafletMap.removeLayer(zl.marker);
+  });
+  zoneLayers = [];
+
+  zonesData.forEach((z) => {
+    const yellowCircle = L.circle([z.lat, z.lng], {
+      radius: z.radius_yellow,
+      color: "#f59e0b",
+      fillColor: "#f59e0b",
+      fillOpacity: 0.07,
+      weight: 1,
+      dashArray: "6 4",
+    }).addTo(leafletMap);
+
+    const greenCircle = L.circle([z.lat, z.lng], {
+      radius: z.radius_green,
+      color: "#22c55e",
+      fillColor: "#22c55e",
+      fillOpacity: 0.12,
+      weight: 2,
+    }).addTo(leafletMap);
+
+    const marker = L.marker([z.lat, z.lng], {
+      draggable: true,
+      title: z.name,
+    }).addTo(leafletMap)
+      .bindPopup(`<b>${esc(z.name)}</b><br>🟢 ${z.radius_green}m &nbsp; 🟡 ${z.radius_yellow}m`);
+
+    marker.on("click", () => openZonePanel(z));
+    marker.on("dragend", (e) => {
+      const pos = e.target.getLatLng();
+      z.lat = pos.lat;
+      z.lng = pos.lng;
+      yellowCircle.setLatLng(pos);
+      greenCircle.setLatLng(pos);
+      if (editingZone && editingZone.id === z.id) {
+        editingZone.lat = pos.lat;
+        editingZone.lng = pos.lng;
+      }
+    });
+
+    zoneLayers.push({ zone: z, yellowCircle, greenCircle, marker });
+  });
+}
+
+async function loadEmployeesOnMap() {
+  // Remove old
+  employeeLayers.forEach((m) => leafletMap.removeLayer(m));
+  employeeLayers = [];
+
+  // Get live statuses
+  const { data: statuses } = await supabase.rpc("tt_get_user_statuses");
+  if (!statuses) return;
+
+  const working = statuses.filter((s) => s.status === "Working");
+
+  // Get latest Clock In logs with GPS for working employees
+  for (const emp of working) {
+    const { data: logs } = await supabase
+      .from("tt_logs")
+      .select("lat, lng, client_time")
+      .eq("user_name", emp.user_name)
+      .eq("action", "Clock In")
+      .not("lat", "is", null)
+      .order("client_time", { ascending: false })
+      .limit(1);
+
+    if (!logs || !logs.length) continue;
+    const log = logs[0];
+    const color = getZoneColor(log.lat, log.lng);
+    const colors = { green: "#22c55e", yellow: "#f59e0b", red: "#ef4444" };
+    const since = new Date(emp.since);
+    const dur = Math.floor((Date.now() - since.getTime()) / 60000);
+    const hours = Math.floor(dur / 60);
+    const mins = dur % 60;
+
+    const pulseIcon = L.divIcon({
+      className: "emp-marker",
+      html: `<div class="emp-dot" style="background:${colors[color] || "#888"}"></div>`,
+      iconSize: [20, 20],
+      iconAnchor: [10, 10],
+    });
+
+    const m = L.marker([log.lat, log.lng], { icon: pulseIcon })
+      .addTo(leafletMap)
+      .bindPopup(`<b>${esc(emp.user_name)}</b><br>
+        Since ${since.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}<br>
+        Duration: ${hours}h ${mins}m<br>
+        Zone: <b style="color:${colors[color]}">${color.toUpperCase()}</b>`);
+
+    employeeLayers.push(m);
+  }
+}
+
+function setupZonePanel() {
+  const greenSlider = $("#zone-green");
+  const yellowSlider = $("#zone-yellow");
+  const greenVal = $("#zone-green-val");
+  const yellowVal = $("#zone-yellow-val");
+
+  greenSlider.addEventListener("input", () => {
+    greenVal.textContent = `${greenSlider.value}m`;
+    if (editingZone) updateZonePreview();
+  });
+  yellowSlider.addEventListener("input", () => {
+    yellowVal.textContent = `${yellowSlider.value}m`;
+    if (editingZone) updateZonePreview();
+  });
+
+  $("#zone-save").addEventListener("click", saveZone);
+  $("#zone-delete").addEventListener("click", deleteZone);
+  $("#zone-cancel").addEventListener("click", closeZonePanel);
+}
+
+function openZonePanel(zone) {
+  editingZone = { ...zone };
+  const panel = $("#zone-panel");
+  $("#zone-panel-title").textContent = zone.id ? "Edit Zone" : "New Zone";
+  $("#zone-name").value = zone.name;
+  $("#zone-green").value = zone.radius_green;
+  $("#zone-green-val").textContent = `${zone.radius_green}m`;
+  $("#zone-yellow").value = zone.radius_yellow;
+  $("#zone-yellow-val").textContent = `${zone.radius_yellow}m`;
+  $("#zone-delete").classList.toggle("hidden", !zone.id);
+  panel.classList.remove("hidden");
+
+  // Show preview circles if new zone
+  if (!zone.id) {
+    editingZone._previewYellow = L.circle([zone.lat, zone.lng], {
+      radius: zone.radius_yellow, color: "#f59e0b", fillOpacity: 0.07, weight: 1, dashArray: "6 4",
+    }).addTo(leafletMap);
+    editingZone._previewGreen = L.circle([zone.lat, zone.lng], {
+      radius: zone.radius_green, color: "#22c55e", fillOpacity: 0.12, weight: 2,
+    }).addTo(leafletMap);
+  }
+}
+
+function updateZonePreview() {
+  const green = parseInt($("#zone-green").value);
+  const yellow = parseInt($("#zone-yellow").value);
+
+  if (editingZone.id) {
+    const zl = zoneLayers.find((l) => l.zone.id === editingZone.id);
+    if (zl) {
+      zl.greenCircle.setRadius(green);
+      zl.yellowCircle.setRadius(yellow);
+    }
+  } else {
+    if (editingZone._previewGreen) editingZone._previewGreen.setRadius(green);
+    if (editingZone._previewYellow) editingZone._previewYellow.setRadius(yellow);
+  }
+}
+
+async function saveZone() {
+  const name = $("#zone-name").value.trim();
+  const green = parseInt($("#zone-green").value);
+  const yellow = parseInt($("#zone-yellow").value);
+  if (!name) return;
+
+  const payload = {
+    name,
+    lat: editingZone.lat,
+    lng: editingZone.lng,
+    radius_green: green,
+    radius_yellow: yellow,
+  };
+
+  if (editingZone.id) {
+    await supabase.from("tt_zones").update(payload).eq("id", editingZone.id);
+  } else {
+    await supabase.from("tt_zones").insert(payload);
+  }
+
+  await loadZones();
+  renderZonesOnMap();
+  closeZonePanel();
+  showToast("Zone saved");
+}
+
+async function deleteZone() {
+  if (!editingZone || !editingZone.id) return;
+  await supabase.from("tt_zones").delete().eq("id", editingZone.id);
+  await loadZones();
+  renderZonesOnMap();
+  closeZonePanel();
+  showToast("Zone deleted");
+}
+
+function closeZonePanel() {
+  if (editingZone?._previewGreen) leafletMap.removeLayer(editingZone._previewGreen);
+  if (editingZone?._previewYellow) leafletMap.removeLayer(editingZone._previewYellow);
+  editingZone = null;
+  $("#zone-panel").classList.add("hidden");
+}
+
+// --- Mini-map popup for shift log geo icons ---
+function attachGeoPopups() {
+  document.querySelectorAll(".geo-zone").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      const shiftId = parseInt(el.dataset.shift);
+      const geo = geoMap[shiftId];
+      if (!geo) return;
+
+      // Remove existing popup
+      document.querySelectorAll(".minimap-popup").forEach((p) => p.remove());
+
+      const popup = document.createElement("div");
+      popup.className = "minimap-popup";
+      popup.innerHTML = `<div id="minimap-${shiftId}" style="width:300px;height:200px;"></div><button class="minimap-close">✕</button>`;
+      el.parentElement.style.position = "relative";
+      el.parentElement.appendChild(popup);
+
+      const mm = L.map(`minimap-${shiftId}`, { zoomControl: false, attributionControl: false })
+        .setView([geo.lat, geo.lng], 15);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(mm);
+
+      // Draw zones
+      zonesData.forEach((z) => {
+        L.circle([z.lat, z.lng], { radius: z.radius_yellow, color: "#f59e0b", fillOpacity: 0.07, weight: 1 }).addTo(mm);
+        L.circle([z.lat, z.lng], { radius: z.radius_green, color: "#22c55e", fillOpacity: 0.12, weight: 2 }).addTo(mm);
+      });
+
+      // Employee marker
+      const { color } = geoZoneLabel(shiftId);
+      const colors = { green: "#22c55e", yellow: "#f59e0b", red: "#ef4444" };
+      L.circleMarker([geo.lat, geo.lng], {
+        radius: 8, color: colors[color] || "#888", fillColor: colors[color] || "#888", fillOpacity: 0.9, weight: 2,
+      }).addTo(mm);
+
+      setTimeout(() => mm.invalidateSize(), 100);
+
+      popup.querySelector(".minimap-close").addEventListener("click", () => {
+        mm.remove();
+        popup.remove();
+      });
+    });
+  });
 }
 
 function esc(str) {

@@ -1086,3 +1086,125 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     font-size: 13px;
   }
 }
+
+/* ===== Map & Geozones ===== */
+#map-container {
+  border-radius: 12px;
+}
+
+/* Zone editor panel */
+.zone-panel {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  right: 20px;
+  max-width: 360px;
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  z-index: 1001;
+}
+.zone-panel h3 {
+  margin: 0 0 12px;
+  font-size: 16px;
+  color: var(--text-primary, #1c1c57);
+}
+.zone-panel label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: var(--text-secondary, #555);
+}
+.zone-panel input[type="text"] {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.zone-panel input[type="range"] {
+  width: calc(100% - 60px);
+  vertical-align: middle;
+}
+.zone-panel span {
+  display: inline-block;
+  width: 50px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #1c1c57);
+}
+.zone-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+.zone-panel-actions .btn-danger {
+  background: #ef4444;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+/* Employee dots on map */
+.emp-marker {
+  background: transparent !important;
+  border: none !important;
+}
+.emp-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.4);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.8; }
+}
+
+/* Mini-map popup in shift log */
+.minimap-popup {
+  position: absolute;
+  z-index: 1000;
+  background: var(--card-bg, #fff);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  overflow: hidden;
+  right: 0;
+  top: -210px;
+}
+.minimap-popup .leaflet-container {
+  border-radius: 10px;
+}
+.minimap-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  font-size: 14px;
+  cursor: pointer;
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Geo zone colors in shift log */
+.geo-green { color: #22c55e; }
+.geo-yellow { color: #f59e0b; }
+.geo-red { color: #ef4444; }
