@@ -470,6 +470,11 @@ circle {
   font-size: 11px;
   cursor: pointer;
 }
+.edited-badge {
+  font-size: 11px;
+  color: var(--gray);
+  opacity: 0.7;
+}
 .del-btn {
   color: #ef4444;
   background: none;

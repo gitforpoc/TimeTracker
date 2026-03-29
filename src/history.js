@@ -8,6 +8,20 @@ let els = null;
 let currentReportText = "";
 let isUserAuthenticated = false;
 let authToken = null;
+let editedShiftIds = new Set(
+  JSON.parse(localStorage.getItem("tt_edited_shifts") || "[]")
+);
+
+const EDIT_REASONS = [
+  "Forgot to clock out",
+  "Forgot to clock in",
+  "Wrong time recorded",
+  "Phone/app issue",
+];
+
+function saveEditedShifts() {
+  localStorage.setItem("tt_edited_shifts", JSON.stringify([...editedShiftIds]));
+}
 
 export function initHistory(elements) {
   els = elements;
@@ -166,9 +180,13 @@ export function renderHistoryList() {
       ? `<div class="comment-box">💬 ${escapeHtml(item.comment)}</div>`
       : "";
 
-    const editBtn = isUserAuthenticated
-      ? `<button class="edit-btn" data-id="${item.id}">EDIT</button>`
-      : "";
+    const alreadyEdited = editedShiftIds.has(String(item.id));
+    let editHtml = "";
+    if (isUserAuthenticated) {
+      editHtml = alreadyEdited
+        ? `<span class="edited-badge">✏️ Edited</span>`
+        : `<button class="edit-btn" data-id="${item.id}">EDIT</button>`;
+    }
 
     div.innerHTML = `
       <div class="card-header">
@@ -177,14 +195,14 @@ export function renderHistoryList() {
       </div>
       ${commentHtml}
       <div class="card-actions">
-        ${editBtn}
+        ${editHtml}
         <button class="comment-btn" data-id="${item.id}">💬</button>
         <button class="del-btn" data-id="${item.id}">DELETE</button>
       </div>
     `;
 
     // Event delegation
-    if (isUserAuthenticated) {
+    if (isUserAuthenticated && !alreadyEdited) {
       div.querySelector(".edit-btn").addEventListener("click", () => editShift(item));
     }
     div.querySelector(".comment-btn").addEventListener("click", () => addComment(item.id));
@@ -331,9 +349,10 @@ async function editShift(item) {
     });
   }
 
-  // Build edit dialog
+  // Build edit dialog with dropdown reasons
   const inStr = shift.clock_in ? toLocalInput(shift.clock_in) : "";
   const outStr = shift.clock_out ? toLocalInput(shift.clock_out) : "";
+  const reasonOptions = EDIT_REASONS.map((r) => `<option value="${r}">${r}</option>`).join("");
 
   const html = `
     <div style="display:flex;flex-direction:column;gap:10px;text-align:left;">
@@ -346,16 +365,25 @@ async function editShift(item) {
       <label style="font-size:12px;color:var(--gray);">Comment
         <input type="text" id="edit-cmt" value="${escapeHtml(shift.comment || "")}" placeholder="Optional" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
       </label>
+      <label style="font-size:12px;color:var(--gray);">Reason
+        <select id="edit-reason" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
+          ${reasonOptions}
+          <option value="">Other...</option>
+        </select>
+        <input type="text" id="edit-reason-other" placeholder="Describe reason..." style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;display:none;">
+      </label>
     </div>
   `;
 
   const result = await showDialog(html, "html");
   if (!result) return;
 
-  // result is { "edit-in": "...", "edit-out": "...", "edit-cmt": "..." }
   const newIn = result["edit-in"];
   const newOut = result["edit-out"];
   const newComment = (result["edit-cmt"] || "").trim();
+  const reasonSelect = result["edit-reason"] || "";
+  const reasonOther = (result["edit-reason-other"] || "").trim();
+  const reason = reasonSelect || reasonOther || "Employee self-edit";
 
   const changes = {};
   const oldInMs = shift.clock_in ? new Date(shift.clock_in).getTime() : 0;
@@ -385,18 +413,18 @@ async function editShift(item) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify({
-        shiftId: shift.id,
-        changes,
-        reason: "Employee self-edit",
-      }),
+      body: JSON.stringify({ shiftId: shift.id, changes, reason }),
     });
 
-    const result = await res.json();
+    const apiResult = await res.json();
     if (!res.ok) {
-      showToast(result.error || "Error");
+      showToast(apiResult.error || "Error");
       return;
     }
+
+    // Mark as edited (one-time limit)
+    editedShiftIds.add(String(item.id));
+    saveEditedShifts();
 
     // Update local data too
     if (changes.clock_in) item.in = new Date(changes.clock_in).getTime();

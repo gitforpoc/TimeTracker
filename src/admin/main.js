@@ -6,6 +6,7 @@ let supabase = null;
 let authToken = null;
 let currentTab = "status";
 let shiftsData = [];
+let editsMap = {};
 let currentPage = 0;
 const PAGE_SIZE = 50;
 let statusInterval = null;
@@ -257,6 +258,25 @@ async function loadShifts() {
 
   shiftsData = data || [];
   currentPage = 0;
+
+  // Load edit history for these shifts
+  editsMap = {};
+  if (shiftsData.length > 0) {
+    const shiftIds = shiftsData.map((s) => s.id);
+    const { data: edits } = await supabase
+      .from("tt_edits")
+      .select("shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
+      .in("shift_id", shiftIds)
+      .order("created_at", { ascending: true });
+
+    if (edits) {
+      edits.forEach((e) => {
+        if (!editsMap[e.shift_id]) editsMap[e.shift_id] = [];
+        editsMap[e.shift_id].push(e);
+      });
+    }
+  }
+
   renderShifts();
 }
 
@@ -320,7 +340,10 @@ function renderShifts() {
         <td>${hours}</td>
         <td>${typeLabel}</td>
         <td>${esc(s.comment)}</td>
-        <td><button class="btn-edit" data-id="${s.id}">Edit</button></td>
+        <td>
+          ${editsMap[s.id] ? `<span class="edit-indicator" data-id="${s.id}" title="Edited">✏️</span>` : ""}
+          <button class="btn-edit" data-id="${s.id}">Edit</button>
+        </td>
       </tr>`;
     })
     .join("");
@@ -459,10 +482,24 @@ function showToast(msg) {
 // --- Edit Modal ---
 function setupEditListeners() {
   document.addEventListener("click", (e) => {
-    if (!e.target.classList.contains("btn-edit")) return;
-    const id = Number(e.target.dataset.id);
-    const shift = shiftsData.find((s) => s.id === id);
-    if (shift) openEditModal(shift);
+    // Edit button
+    if (e.target.classList.contains("btn-edit")) {
+      const id = Number(e.target.dataset.id);
+      const shift = shiftsData.find((s) => s.id === id);
+      if (shift) openEditModal(shift);
+      return;
+    }
+    // Edit history indicator
+    if (e.target.classList.contains("edit-indicator")) {
+      const id = Number(e.target.dataset.id);
+      showEditHistory(id, e.target);
+      return;
+    }
+    // Close popover on outside click
+    const popover = document.querySelector(".edit-popover");
+    if (popover && !popover.contains(e.target)) {
+      popover.remove();
+    }
   });
 
   $("#edit-cancel").addEventListener("click", closeEditModal);
@@ -654,6 +691,43 @@ function toLocalDatetimeStr(iso) {
   const offset = d.getTimezoneOffset();
   const local = new Date(d.getTime() - offset * 60000);
   return local.toISOString().slice(0, 16);
+}
+
+// --- Edit History Popover ---
+function showEditHistory(shiftId, anchor) {
+  // Remove existing popover
+  document.querySelectorAll(".edit-popover").forEach((p) => p.remove());
+
+  const edits = editsMap[shiftId];
+  if (!edits || edits.length === 0) return;
+
+  const popover = document.createElement("div");
+  popover.className = "edit-popover";
+
+  const rows = edits.map((e) => {
+    const time = new Date(e.created_at).toLocaleString("en-US", {
+      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+    });
+    const isAdmin = e.edited_by_name !== shiftsData.find((s) => s.id === shiftId)?.user_name;
+    const badge = isAdmin ? "supervisor" : "employee";
+    return `<div class="edit-entry">
+      <div class="edit-meta">
+        <span class="edit-badge edit-badge-${badge}">${esc(e.edited_by_name)}</span>
+        <span class="edit-time">${time}</span>
+      </div>
+      <div class="edit-detail">${esc(e.field_changed)}: ${esc(e.old_value) || "—"} → ${esc(e.new_value) || "—"}</div>
+      ${e.reason ? `<div class="edit-reason">${esc(e.reason)}</div>` : ""}
+    </div>`;
+  }).join("");
+
+  popover.innerHTML = `<div class="popover-title">Edit History</div>${rows}`;
+
+  // Position near anchor
+  const rect = anchor.getBoundingClientRect();
+  popover.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  popover.style.left = `${Math.min(rect.left, window.innerWidth - 320)}px`;
+
+  document.body.appendChild(popover);
 }
 
 // --- Start ---

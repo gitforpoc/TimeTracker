@@ -589,6 +589,97 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* ---- Edit Button ---- */
 
+/* ---- Edit Indicator & History Popover ---- */
+
+.edit-indicator {
+  cursor: pointer;
+  font-size: 14px;
+  margin-right: 6px;
+  opacity: 0.7;
+  transition: opacity var(--transition-fast);
+}
+
+.edit-indicator:hover {
+  opacity: 1;
+}
+
+.edit-popover {
+  position: absolute;
+  z-index: 200;
+  width: 300px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--navy);
+  border: 1px solid var(--border-active);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+  font-size: 12px;
+}
+
+.popover-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
+
+.edit-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.edit-entry:last-child {
+  border-bottom: none;
+}
+
+.edit-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.edit-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.edit-badge-employee {
+  background: var(--blue-dim);
+  color: var(--blue);
+}
+
+.edit-badge-supervisor {
+  background: var(--pink-dim);
+  color: var(--pink);
+}
+
+.edit-time {
+  font-size: 10px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.edit-detail {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.edit-reason {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  margin-top: 2px;
+}
+
+/* ---- Edit Button ---- */
+
 .btn-edit {
   font-family: var(--font);
   font-size: 11px;

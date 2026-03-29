@@ -135,6 +135,16 @@ function setupMocks({ isAdmin = true, shiftData = mockShift, shiftError = null, 
     }
     if (table === "tt_edits") {
       return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              limit: vi.fn(() => ({
+                data: [],
+                error: null,
+              })),
+            })),
+          })),
+        })),
         insert: vi.fn(() => ({ error: null })),
       };
     }
@@ -229,6 +239,51 @@ describe("edit-shift API handler", () => {
     await handler(req, res);
     expect(res._status).toBe(403);
     expect(res._json.error).toBe("You can only edit your own shifts");
+  });
+
+  it("returns 409 when employee already edited this shift", async () => {
+    setupMocks({
+      isAdmin: false,
+      shiftData: { ...mockShift, user_name: "Test User" },
+    });
+    // Override tt_edits mock to return existing edit
+    mockSupabase.from.mockImplementation((table) => {
+      if (table === "tt_edits") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({
+              eq: vi.fn(() => ({
+                limit: vi.fn(() => ({
+                  data: [{ id: 99 }],
+                  error: null,
+                })),
+              })),
+            })),
+          })),
+          insert: vi.fn(() => ({ error: null })),
+        };
+      }
+      // Fall through to default setupMocks for other tables
+      if (table === "user_access") {
+        return { select: vi.fn(() => ({ eq: vi.fn(() => ({ eq: vi.fn(() => ({ single: vi.fn(() => ({ data: { role: "user" }, error: null })) })) })) })) };
+      }
+      if (table === "profiles") {
+        return { select: vi.fn(() => ({ eq: vi.fn(() => ({ single: vi.fn(() => ({ data: { name: "Test User" }, error: null })) })) })) };
+      }
+      if (table === "tt_shifts") {
+        return {
+          select: vi.fn(() => ({ eq: vi.fn(() => ({ single: vi.fn(() => ({ data: { ...mockShift, user_name: "Test User" }, error: null })) })) })),
+          update: vi.fn(() => ({ eq: vi.fn(() => ({ error: null })) })),
+        };
+      }
+      return {};
+    });
+    const req = makeReq({
+      body: { shiftId: 1, changes: { comment: "second edit" }, reason: "fix" },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    expect(res._status).toBe(409);
   });
 
   it("allows non-admin to edit own shift", async () => {

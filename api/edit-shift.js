@@ -68,6 +68,22 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: "You can only edit your own shifts" });
     }
 
+    // 5b. Employee one-edit limit (admins bypass)
+    if (!isAdmin) {
+      const { data: priorEdits } = await supabase
+        .from("tt_edits")
+        .select("id")
+        .eq("shift_id", shiftId)
+        .eq("edited_by", user.id)
+        .limit(1);
+
+      if (priorEdits && priorEdits.length > 0) {
+        return res.status(409).json({
+          error: "You have already edited this shift. Contact your supervisor for further changes.",
+        });
+      }
+    }
+
     // 6. Build update and audit records
     const update = {};
     const edits = [];
