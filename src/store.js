@@ -14,6 +14,7 @@ class Store {
     this.currentShiftId = localStorage.getItem(STORAGE_KEYS.SHIFT_ID) || null;
     this.userName = localStorage.getItem(STORAGE_KEYS.USER) || "";
     this.autoShare = localStorage.getItem(STORAGE_KEYS.AUTO_SHARE) === "true";
+    this.geoEnabled = localStorage.getItem(STORAGE_KEYS.GEO_ENABLED) === "true";
     this.unreadLogs = 0;
   }
 
@@ -35,6 +36,11 @@ class Store {
   saveAutoShare(val) {
     this.autoShare = val;
     localStorage.setItem(STORAGE_KEYS.AUTO_SHARE, val);
+  }
+
+  saveGeoEnabled(val) {
+    this.geoEnabled = val;
+    localStorage.setItem(STORAGE_KEYS.GEO_ENABLED, val);
   }
 
   findShift(id) {

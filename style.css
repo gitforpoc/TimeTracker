@@ -527,6 +527,34 @@ select {
   font-size: 14px;
   font-weight: 600;
   color: var(--navy);
+  padding: 4px 0;
+}
+
+/* Update Banner */
+.update-banner {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: var(--navy, #1c1c57);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  z-index: 9999;
+}
+.btn-update {
+  background: var(--pink, #ff4081);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 20px;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
 }
 
 /* Custom Range */

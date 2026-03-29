@@ -15,5 +15,6 @@ export const STORAGE_KEYS = {
   SHIFT_ID: "tt_shiftId",
   USER: "tt_user",
   AUTO_SHARE: "tt_autoShare",
+  GEO_ENABLED: "tt_geoEnabled",
   SYNC_QUEUE: "tt_syncQueue",
 };

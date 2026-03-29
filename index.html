@@ -126,6 +126,10 @@
               <span>Auto-open Share (WhatsApp)</span>
               <input type="checkbox" id="auto-share-toggle" />
             </label>
+            <label class="switch-label">
+              <span>Send Location (GPS)</span>
+              <input type="checkbox" id="geo-toggle" />
+            </label>
           </div>
 
           <button class="btn-outline" onclick="app.copyReport()">
@@ -193,6 +197,11 @@
         <button id="sheet-confirm" class="btn-main">CONFIRM</button>
         <button id="sheet-cancel" class="btn-sub">Cancel</button>
       </div>
+    </div>
+
+    <div id="update-banner" class="update-banner hidden">
+      <span>New version available</span>
+      <button id="update-btn" class="btn-update">Update</button>
     </div>
 
     <div id="toast">Copied!</div>

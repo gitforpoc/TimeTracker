@@ -1,4 +1,5 @@
 import "../style.css";
+import { registerSW } from "virtual:pwa-register";
 import { QUOTES } from "./constants.js";
 import { store } from "./store.js";
 import { sync } from "./sync.js";
@@ -28,6 +29,19 @@ import {
   minsToHm,
 } from "./utils.js";
 
+// --- PWA Update ---
+const updateSW = registerSW({
+  onNeedRefresh() {
+    const banner = document.getElementById("update-banner");
+    banner.classList.remove("hidden");
+  },
+  onOfflineReady() {},
+});
+
+document.getElementById("update-btn").addEventListener("click", () => {
+  updateSW();
+});
+
 // --- DOM Elements ---
 const els = {
   mainBtn: document.getElementById("main-action-btn"),
@@ -46,6 +60,7 @@ const els = {
   dateStart: document.getElementById("date-start"),
   dateEnd: document.getElementById("date-end"),
   autoShareToggle: document.getElementById("auto-share-toggle"),
+  geoToggle: document.getElementById("geo-toggle"),
   sheetOverlay: document.getElementById("sheet-overlay"),
   sheet: document.getElementById("action-sheet"),
   sheetTitle: document.getElementById("sheet-title"),
@@ -148,7 +163,7 @@ const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 let lastCoords = null;
 
 function requestLocation() {
-  if (!navigator.geolocation) return;
+  if (!store.geoEnabled || !navigator.geolocation) return;
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       lastCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
@@ -158,8 +173,8 @@ function requestLocation() {
   );
 }
 
-// Pre-fetch location so it's ready when user clicks clock in/out
-requestLocation();
+// Pre-fetch location if enabled
+if (store.geoEnabled) requestLocation();
 
 function getMetaFields() {
   return {
@@ -337,6 +352,13 @@ window.addEventListener("online", () => sync.processQueue());
 els.autoShareToggle.checked = store.autoShare;
 els.autoShareToggle.addEventListener("change", (e) => {
   store.saveAutoShare(e.target.checked);
+});
+
+els.geoToggle.checked = store.geoEnabled;
+els.geoToggle.addEventListener("change", (e) => {
+  store.saveGeoEnabled(e.target.checked);
+  if (e.target.checked) requestLocation();
+  else lastCoords = null;
 });
 
 els.username.addEventListener("input", checkInputState);
