@@ -130,20 +130,25 @@
               <span>Send Location (GPS)</span>
               <input type="checkbox" id="geo-toggle" />
             </label>
-            <button id="check-update-btn" class="btn-outline btn-update-check">
-              Check for Updates
-            </button>
           </div>
 
           <button class="btn-outline" onclick="app.copyReport()">
             Copy Full Report
           </button>
-          <div class="btn-row">
-            <button class="btn-outline" onclick="app.exportData()">
-              Backup
-            </button>
-            <button class="btn-outline" onclick="app.triggerRestore()">
-              Restore
+
+          <ul id="history-list"></ul>
+
+          <div class="bottom-actions">
+            <div class="btn-row">
+              <button class="btn-outline" onclick="app.exportData()">
+                Backup
+              </button>
+              <button class="btn-outline" onclick="app.triggerRestore()">
+                Restore
+              </button>
+            </div>
+            <button id="check-update-btn" class="btn-outline btn-update-check">
+              Check for Updates
             </button>
           </div>
           <input
@@ -152,20 +157,6 @@
             accept=".json"
             style="display: none"
           />
-
-          <ul id="history-list"></ul>
-
-          <div
-            style="
-              margin-top: 30px;
-              border-top: 1px solid #ddd;
-              padding-top: 20px;
-            "
-          >
-            <button class="btn-danger" onclick="app.clearData()">
-              Reset App
-            </button>
-          </div>
         </div>
       </div>
     </div>

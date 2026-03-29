@@ -530,10 +530,17 @@ select {
   padding: 4px 0;
 }
 
-/* Check for Updates */
+/* Bottom Actions */
+.bottom-actions {
+  margin-top: 30px;
+  border-top: 1px solid #ddd;
+  padding-top: 20px;
+}
+.bottom-actions .btn-row {
+  margin-bottom: 10px;
+}
 .btn-update-check {
   width: 100%;
-  margin-top: 8px;
   font-size: 13px;
   padding: 8px;
 }

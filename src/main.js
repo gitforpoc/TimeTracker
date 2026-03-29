@@ -428,7 +428,7 @@ document.getElementById("check-update-btn").addEventListener("click", async () =
 });
 
 // Expose for inline onclick handlers in HTML
-window.app = { addSpecialDay, copyReport, exportData, triggerRestore, clearData: () => store.clearAll() };
+window.app = { addSpecialDay, copyReport, exportData, triggerRestore };
 
 // --- Resume state ---
 if (store.status === "in") {
