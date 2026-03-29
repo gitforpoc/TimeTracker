@@ -1,7 +1,7 @@
 import { store } from "./store.js";
 import { sync } from "./sync.js";
 import { showDialog } from "./dialogs.js";
-import { formatTime, formatDate, minsToHm, copyToClipboard, showToast } from "./utils.js";
+import { formatTime, formatDate, minsToHm, copyToClipboard, showToast, escapeHtml } from "./utils.js";
 import { getSupabaseClient } from "./auth.js";
 
 let els = null;
@@ -163,7 +163,7 @@ export function renderHistoryList() {
     if (item.duration > 0) desc += ` (${minsToHm(item.duration)})`;
 
     const commentHtml = item.comment
-      ? `<div class="comment-box">💬 ${item.comment}</div>`
+      ? `<div class="comment-box">💬 ${escapeHtml(item.comment)}</div>`
       : "";
 
     const editBtn = isUserAuthenticated
@@ -344,7 +344,7 @@ async function editShift(item) {
         <input type="datetime-local" id="edit-out" value="${outStr}" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
       </label>
       <label style="font-size:12px;color:var(--gray);">Comment
-        <input type="text" id="edit-cmt" value="${shift.comment || ""}" placeholder="Optional" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
+        <input type="text" id="edit-cmt" value="${escapeHtml(shift.comment || "")}" placeholder="Optional" style="width:100%;padding:8px;border-radius:6px;border:1px solid #ddd;font-size:14px;margin-top:4px;">
       </label>
     </div>
   `;
@@ -400,8 +400,8 @@ async function editShift(item) {
 
     // Update local data too
     if (changes.clock_in) item.in = new Date(changes.clock_in).getTime();
-    if (changes.clock_out) {
-      item.out = new Date(changes.clock_out).getTime();
+    if (changes.clock_out) item.out = new Date(changes.clock_out).getTime();
+    if (item.in && item.out) {
       item.duration = Math.floor((item.out - item.in) / 60000);
     }
     if (changes.comment !== undefined) item.comment = changes.comment;

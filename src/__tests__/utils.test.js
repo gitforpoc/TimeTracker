@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatTime, formatDate, minsToHm } from "../utils.js";
+import { formatTime, formatDate, minsToHm, escapeHtml } from "../utils.js";
 
 describe("formatTime", () => {
   it("formats morning time", () => {
@@ -54,5 +54,37 @@ describe("minsToHm", () => {
 
   it("converts 60 minutes", () => {
     expect(minsToHm(60)).toBe("1h 0m");
+  });
+});
+
+describe("escapeHtml", () => {
+  it("escapes ampersands", () => {
+    expect(escapeHtml("a & b")).toBe("a &amp; b");
+  });
+
+  it("escapes angle brackets", () => {
+    expect(escapeHtml("<script>alert('xss')</script>")).toBe(
+      "&lt;script&gt;alert('xss')&lt;/script&gt;"
+    );
+  });
+
+  it("escapes double quotes", () => {
+    expect(escapeHtml('value="test"')).toBe("value=&quot;test&quot;");
+  });
+
+  it("escapes all special chars together", () => {
+    expect(escapeHtml('<a href="x&y">')).toBe(
+      "&lt;a href=&quot;x&amp;y&quot;&gt;"
+    );
+  });
+
+  it("returns empty string for null/undefined/empty", () => {
+    expect(escapeHtml(null)).toBe("");
+    expect(escapeHtml(undefined)).toBe("");
+    expect(escapeHtml("")).toBe("");
+  });
+
+  it("returns plain text unchanged", () => {
+    expect(escapeHtml("hello world")).toBe("hello world");
   });
 });

@@ -40,15 +40,21 @@
 
       <!-- Tab navigation -->
       <nav class="tabs">
-        <button class="tab active" data-tab="status">Live Status</button>
+        <button class="tab active" data-tab="status">
+          Live Status <span id="working-badge" class="tab-badge hidden">0</span>
+        </button>
         <button class="tab" data-tab="shifts">Shift Log</button>
       </nav>
 
       <!-- Live Status tab -->
-      <section id="tab-status" class="tab-content">
+      <section id="tab-status" class="tab-content active-tab">
         <div class="status-header">
           <span id="status-count"></span>
           <button id="refresh-status" class="btn-sm">Refresh</button>
+        </div>
+        <div id="status-loading" class="loading-state hidden">
+          <div class="spinner"></div>
+          <span>Loading statuses...</span>
         </div>
         <table id="status-table">
           <thead>
@@ -73,6 +79,7 @@
               Employee
               <select id="filter-employee">
                 <option value="">All</option>
+                <option value="__working__">Working now</option>
               </select>
             </label>
             <button id="apply-filters" class="btn-sm">Apply</button>
@@ -82,9 +89,22 @@
         <div class="shifts-summary">
           <span id="shifts-count"></span>
           <span id="shifts-hours"></span>
+          <span id="shifts-avg"></span>
           <button id="copy-table" class="btn-sm">Copy as Table</button>
         </div>
 
+        <div id="shifts-loading" class="loading-state hidden">
+          <div class="spinner"></div>
+          <span>Loading shifts...</span>
+        </div>
+
+        <div id="shifts-empty" class="empty-state hidden">
+          <div class="empty-icon">&#128203;</div>
+          <p>No shifts found for selected filters</p>
+          <span class="empty-hint">Try adjusting the date range or employee filter</span>
+        </div>
+
+        <!-- Desktop table -->
         <table id="shifts-table">
           <thead>
             <tr>
@@ -100,6 +120,9 @@
           </thead>
           <tbody id="shifts-body"></tbody>
         </table>
+
+        <!-- Mobile cards -->
+        <div id="shifts-cards" class="shifts-cards"></div>
 
         <div class="pagination">
           <button id="prev-page" class="btn-sm" disabled>← Prev</button>
@@ -141,7 +164,18 @@
       </div>
       <div class="modal-actions">
         <button id="edit-cancel" class="btn-sm">Cancel</button>
-        <button id="edit-save" class="btn-sm btn-save">Save</button>
+        <button id="edit-save" class="btn-sm btn-save" disabled>Save</button>
+      </div>
+    </div>
+
+    <!-- Confirm Modal -->
+    <div id="confirm-overlay" class="modal-overlay hidden"></div>
+    <div id="confirm-modal" class="modal modal-confirm hidden">
+      <h3>Confirm Changes</h3>
+      <div id="confirm-changes" class="confirm-changes"></div>
+      <div class="modal-actions">
+        <button id="confirm-cancel" class="btn-sm">Cancel</button>
+        <button id="confirm-ok" class="btn-sm btn-save">Confirm & Save</button>
       </div>
     </div>
 

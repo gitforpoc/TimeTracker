@@ -33,6 +33,11 @@ export async function shareText(text) {
   }
 }
 
+export function escapeHtml(str) {
+  if (!str) return "";
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
 export function showToast(msg) {
   const t = document.getElementById("toast");
   t.innerText = msg;

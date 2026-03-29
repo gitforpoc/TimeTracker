@@ -43,9 +43,13 @@ export default async function handler(req, res) {
           since: log.local_string,
         };
       } else if (log.action === "Paid Off") {
-        // User is on paid leave
         userStatus[name] = {
           status: "🏖️ Paid Off",
+          since: log.local_string,
+        };
+      } else if (log.action === "Day Off") {
+        userStatus[name] = {
+          status: "📅 Day Off",
           since: log.local_string,
         };
       }
