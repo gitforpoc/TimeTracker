@@ -294,30 +294,42 @@ export async function importData(event) {
 
 // --- Edit Shift ---
 async function editShift(item) {
-  // Find server-side shift by matching clock_in time + user_name
+  // Find server-side shift by date + user_name
   const supabase = getSupabaseClient();
   if (!supabase) {
     showToast("Not connected to server");
     return;
   }
 
-  // Match by timestamp (item.in is epoch ms, shift.clock_in is ISO)
-  const clockInISO = item.in ? new Date(item.in).toISOString() : new Date(item.dateObj).toISOString();
+  const itemDate = new Date(item.dateObj || item.in);
+  const dayStart = new Date(itemDate);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(itemDate);
+  dayEnd.setHours(23, 59, 59, 999);
 
   const { data: shifts } = await supabase
     .from("tt_shifts")
     .select("id, clock_in, clock_out, duration_minutes, type, comment")
     .eq("user_name", store.userName)
-    .gte("clock_in", new Date(new Date(clockInISO).getTime() - 60000).toISOString())
-    .lte("clock_in", new Date(new Date(clockInISO).getTime() + 60000).toISOString())
-    .limit(1);
+    .gte("clock_in", dayStart.toISOString())
+    .lte("clock_in", dayEnd.toISOString())
+    .order("clock_in", { ascending: false });
 
   if (!shifts || shifts.length === 0) {
     showToast("Shift not found on server");
     return;
   }
 
-  const shift = shifts[0];
+  // If multiple shifts same day, pick closest to local time
+  let shift = shifts[0];
+  if (shifts.length > 1 && item.in) {
+    const target = item.in;
+    shift = shifts.reduce((best, s) => {
+      const diff = Math.abs(new Date(s.clock_in).getTime() - target);
+      const bestDiff = Math.abs(new Date(best.clock_in).getTime() - target);
+      return diff < bestDiff ? s : best;
+    });
+  }
 
   // Build edit dialog
   const inStr = shift.clock_in ? toLocalInput(shift.clock_in) : "";
