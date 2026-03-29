@@ -649,7 +649,7 @@ async function loadEmployeesOnMap() {
   const { data: statuses } = await supabase.rpc("tt_get_user_statuses");
   if (!statuses) return;
 
-  const working = statuses.filter((s) => s.status === "Working");
+  const working = statuses.filter((s) => s.action === "Clock In");
 
   // Get latest Clock In logs with GPS for working employees
   for (const emp of working) {
@@ -662,11 +662,12 @@ async function loadEmployeesOnMap() {
       .order("client_time", { ascending: false })
       .limit(1);
 
+    // If no GPS log, still show on map using zone center as fallback? No — skip
     if (!logs || !logs.length) continue;
     const log = logs[0];
     const color = getZoneColor(log.lat, log.lng);
     const colors = { green: "#22c55e", yellow: "#f59e0b", red: "#ef4444" };
-    const since = new Date(emp.since);
+    const since = new Date(emp.client_time);
     const dur = Math.floor((Date.now() - since.getTime()) / 60000);
     const hours = Math.floor(dur / 60);
     const mins = dur % 60;
