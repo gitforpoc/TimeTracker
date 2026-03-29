@@ -318,7 +318,7 @@ async function initAuth() {
     if (client) {
       const { data: { session } } = await client.auth.getSession();
       if (session) {
-        setAuthState(true, session.access_token);
+        setAuthState(true, session.access_token, session.user.id);
 
         // Enable sync for authenticated users — fresh token on each call
         sync.setTokenGetter(async () => {

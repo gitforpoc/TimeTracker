@@ -475,6 +475,11 @@ circle {
   color: var(--gray);
   opacity: 0.7;
 }
+.adjusted-badge {
+  font-size: 11px;
+  color: #f59e0b;
+  font-weight: 600;
+}
 .del-btn {
   color: #ef4444;
   background: none;

@@ -8,9 +8,14 @@ let els = null;
 let currentReportText = "";
 let isUserAuthenticated = false;
 let authToken = null;
+let authUserId = null;
 let editedShiftIds = new Set(
   JSON.parse(localStorage.getItem("tt_edited_shifts") || "[]")
 );
+
+// Server data cache for SSO users
+let serverShifts = null; // array of normalized shift objects
+let adjustedShiftIds = new Set(); // shifts edited by someone other than current user
 
 const EDIT_REASONS = [
   "Forgot to clock out",
@@ -27,12 +32,13 @@ export function initHistory(elements) {
   els = elements;
 }
 
-export function setAuthState(authenticated, token) {
+export function setAuthState(authenticated, token, userId) {
   isUserAuthenticated = authenticated;
   authToken = token;
+  authUserId = userId || null;
 }
 
-export function openHistory() {
+export async function openHistory() {
   resetBadge();
   populatePeriods();
 
@@ -47,11 +53,18 @@ export function openHistory() {
     els.periodSelect.value = currentVal;
   }
 
-  renderHistoryList();
-  renderReport();
-
   els.historyView.classList.remove("hidden");
   window.history.pushState({ modal: "history" }, "History", "#history");
+
+  // SSO users: fetch fresh data from server
+  if (isUserAuthenticated) {
+    renderHistoryList(); // show local data first while loading
+    renderReport();
+    await fetchServerData();
+  }
+
+  renderHistoryList();
+  renderReport();
 }
 
 export function closeHistory() {
@@ -91,6 +104,76 @@ function updateBadgeUI() {
   }
 }
 
+// --- Server Data (SSO users) ---
+async function fetchServerData() {
+  if (!isUserAuthenticated) return;
+
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  try {
+    // Fetch all shifts for this user (RLS filters by user_name)
+    const { data: shifts, error } = await supabase
+      .from("tt_shifts")
+      .select("id, clock_in, clock_out, duration_minutes, type, comment")
+      .order("clock_in", { ascending: false })
+      .limit(500);
+
+    if (error || !shifts) return;
+
+    // Fetch edits to detect supervisor adjustments
+    const shiftIds = shifts.map((s) => s.id);
+    let editsData = [];
+    if (shiftIds.length > 0) {
+      const { data: edits } = await supabase
+        .from("tt_edits")
+        .select("shift_id, edited_by")
+        .in("shift_id", shiftIds);
+      editsData = edits || [];
+    }
+
+    // Determine which shifts were adjusted by someone else
+    adjustedShiftIds = new Set();
+    editsData.forEach((e) => {
+      if (e.edited_by !== authUserId) {
+        adjustedShiftIds.add(e.shift_id);
+      }
+    });
+
+    // Track which shifts the current user has edited (for 1x limit)
+    editsData.forEach((e) => {
+      if (e.edited_by === authUserId) {
+        editedShiftIds.add(String(e.shift_id));
+      }
+    });
+    saveEditedShifts();
+
+    // Normalize to same shape as localStorage items
+    serverShifts = shifts.map((s) => {
+      const inTime = s.clock_in ? new Date(s.clock_in).getTime() : null;
+      const outTime = s.clock_out ? new Date(s.clock_out).getTime() : null;
+      const typeMap = { work: "work", day_off: "Day Off", paid_off: "Paid Off" };
+      return {
+        id: s.id, // server ID (used for edit-shift API)
+        serverId: s.id,
+        dateObj: s.clock_in || s.clock_out,
+        type: typeMap[s.type] || s.type,
+        in: inTime,
+        out: outTime,
+        duration: s.duration_minutes || 0,
+        comment: s.comment || null,
+      };
+    });
+  } catch {
+    // Silently fall back to localStorage
+    serverShifts = null;
+  }
+}
+
+function useServerData() {
+  return isUserAuthenticated && serverShifts !== null;
+}
+
 // --- Reports ---
 function getReportItems() {
   const val = els.periodSelect.value;
@@ -114,7 +197,9 @@ function getReportItems() {
     endDate.setHours(23, 59, 59, 999);
   }
 
-  return store.data
+  const source = useServerData() ? serverShifts : store.data;
+
+  return source
     .filter((i) => {
       const d = new Date(i.dateObj);
       return d >= startDate && d <= endDate;
@@ -180,12 +265,18 @@ export function renderHistoryList() {
       ? `<div class="comment-box">💬 ${escapeHtml(item.comment)}</div>`
       : "";
 
+    const isFromServer = useServerData();
     const alreadyEdited = editedShiftIds.has(String(item.id));
+    const isAdjusted = isFromServer && adjustedShiftIds.has(item.id);
     let editHtml = "";
     if (isUserAuthenticated) {
-      editHtml = alreadyEdited
-        ? `<span class="edited-badge">✏️ Edited</span>`
-        : `<button class="edit-btn" data-id="${item.id}">EDIT</button>`;
+      if (isAdjusted) {
+        editHtml = `<span class="adjusted-badge">Adjusted</span>`;
+      } else if (alreadyEdited) {
+        editHtml = `<span class="edited-badge">✏️ Edited</span>`;
+      } else {
+        editHtml = `<button class="edit-btn" data-id="${item.id}">EDIT</button>`;
+      }
     }
 
     div.innerHTML = `
@@ -196,17 +287,20 @@ export function renderHistoryList() {
       ${commentHtml}
       <div class="card-actions">
         ${editHtml}
-        <button class="comment-btn" data-id="${item.id}">💬</button>
-        <button class="del-btn" data-id="${item.id}">DELETE</button>
+        ${!isFromServer ? `<button class="comment-btn" data-id="${item.id}">💬</button>` : ""}
+        ${!isFromServer ? `<button class="del-btn" data-id="${item.id}">DELETE</button>` : ""}
       </div>
     `;
 
     // Event delegation
-    if (isUserAuthenticated && !alreadyEdited) {
-      div.querySelector(".edit-btn").addEventListener("click", () => editShift(item));
+    if (isUserAuthenticated && !alreadyEdited && !isAdjusted) {
+      const editBtn = div.querySelector(".edit-btn");
+      if (editBtn) editBtn.addEventListener("click", () => editShift(item));
     }
-    div.querySelector(".comment-btn").addEventListener("click", () => addComment(item.id));
-    div.querySelector(".del-btn").addEventListener("click", () => deleteItem(item.id));
+    if (!isFromServer) {
+      div.querySelector(".comment-btn").addEventListener("click", () => addComment(item.id));
+      div.querySelector(".del-btn").addEventListener("click", () => deleteItem(item.id));
+    }
 
     list.appendChild(div);
   });
@@ -312,41 +406,52 @@ export async function importData(event) {
 
 // --- Edit Shift ---
 async function editShift(item) {
-  // Find server-side shift by date + user_name
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    showToast("Not connected to server");
-    return;
-  }
+  let shift;
 
-  const itemDate = new Date(item.dateObj || item.in);
-  const dayStart = new Date(itemDate);
-  dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(itemDate);
-  dayEnd.setHours(23, 59, 59, 999);
+  if (item.serverId) {
+    // Server data — we already have the shift info
+    shift = {
+      id: item.serverId,
+      clock_in: item.in ? new Date(item.in).toISOString() : null,
+      clock_out: item.out ? new Date(item.out).toISOString() : null,
+      comment: item.comment,
+    };
+  } else {
+    // Local data — find server-side shift by date + user_name
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      showToast("Not connected to server");
+      return;
+    }
 
-  const { data: shifts } = await supabase
-    .from("tt_shifts")
-    .select("id, clock_in, clock_out, duration_minutes, type, comment")
-    .eq("user_name", store.userName)
-    .gte("clock_in", dayStart.toISOString())
-    .lte("clock_in", dayEnd.toISOString())
-    .order("clock_in", { ascending: false });
+    const itemDate = new Date(item.dateObj || item.in);
+    const dayStart = new Date(itemDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(itemDate);
+    dayEnd.setHours(23, 59, 59, 999);
 
-  if (!shifts || shifts.length === 0) {
-    showToast("Shift not found on server");
-    return;
-  }
+    const { data: shifts } = await supabase
+      .from("tt_shifts")
+      .select("id, clock_in, clock_out, duration_minutes, type, comment")
+      .eq("user_name", store.userName)
+      .gte("clock_in", dayStart.toISOString())
+      .lte("clock_in", dayEnd.toISOString())
+      .order("clock_in", { ascending: false });
 
-  // If multiple shifts same day, pick closest to local time
-  let shift = shifts[0];
-  if (shifts.length > 1 && item.in) {
-    const target = item.in;
-    shift = shifts.reduce((best, s) => {
-      const diff = Math.abs(new Date(s.clock_in).getTime() - target);
-      const bestDiff = Math.abs(new Date(best.clock_in).getTime() - target);
-      return diff < bestDiff ? s : best;
-    });
+    if (!shifts || shifts.length === 0) {
+      showToast("Shift not found on server");
+      return;
+    }
+
+    shift = shifts[0];
+    if (shifts.length > 1 && item.in) {
+      const target = item.in;
+      shift = shifts.reduce((best, s) => {
+        const diff = Math.abs(new Date(s.clock_in).getTime() - target);
+        const bestDiff = Math.abs(new Date(best.clock_in).getTime() - target);
+        return diff < bestDiff ? s : best;
+      });
+    }
   }
 
   // Build edit dialog with dropdown reasons
@@ -423,17 +528,22 @@ async function editShift(item) {
     }
 
     // Mark as edited (one-time limit)
-    editedShiftIds.add(String(item.id));
+    editedShiftIds.add(String(item.serverId || item.id));
     saveEditedShifts();
 
-    // Update local data too
-    if (changes.clock_in) item.in = new Date(changes.clock_in).getTime();
-    if (changes.clock_out) item.out = new Date(changes.clock_out).getTime();
-    if (item.in && item.out) {
-      item.duration = Math.floor((item.out - item.in) / 60000);
+    // Refresh from server if using server data
+    if (useServerData()) {
+      await fetchServerData();
+    } else {
+      // Update local data
+      if (changes.clock_in) item.in = new Date(changes.clock_in).getTime();
+      if (changes.clock_out) item.out = new Date(changes.clock_out).getTime();
+      if (item.in && item.out) {
+        item.duration = Math.floor((item.out - item.in) / 60000);
+      }
+      if (changes.comment !== undefined) item.comment = changes.comment;
+      store.save();
     }
-    if (changes.comment !== undefined) item.comment = changes.comment;
-    store.save();
 
     showToast("Shift updated");
     renderHistoryList();
