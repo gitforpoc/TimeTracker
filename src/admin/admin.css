@@ -591,6 +591,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* ---- Edit Indicator & History Popover ---- */
 
+.geo-icon {
+  font-size: 14px;
+  margin-right: 4px;
+  text-decoration: none;
+}
+.geo-ok {
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity var(--transition-fast);
+}
+.geo-ok:hover { opacity: 1; }
+.geo-none { opacity: 0.25; cursor: default; }
+
 .edit-indicator {
   cursor: pointer;
   font-size: 14px;

@@ -7,6 +7,7 @@ let authToken = null;
 let currentTab = "status";
 let shiftsData = [];
 let editsMap = {};
+let geoMap = {};
 let currentPage = 0;
 const PAGE_SIZE = 50;
 let statusInterval = null;
@@ -259,20 +260,48 @@ async function loadShifts() {
   shiftsData = data || [];
   currentPage = 0;
 
-  // Load edit history for these shifts
+  // Load edit history + geo data for these shifts
   editsMap = {};
+  geoMap = {};
   if (shiftsData.length > 0) {
     const shiftIds = shiftsData.map((s) => s.id);
-    const { data: edits } = await supabase
-      .from("tt_edits")
-      .select("shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
-      .in("shift_id", shiftIds)
-      .order("created_at", { ascending: true });
 
-    if (edits) {
-      edits.forEach((e) => {
+    // Fetch edits and geo in parallel
+    const [editsResult, logsResult] = await Promise.all([
+      supabase
+        .from("tt_edits")
+        .select("shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
+        .in("shift_id", shiftIds)
+        .order("created_at", { ascending: true }),
+      supabase
+        .from("tt_logs")
+        .select("user_name, client_time, lat, lng")
+        .eq("action", "Clock In")
+        .gte("client_time", `${start}T00:00:00`)
+        .lte("client_time", `${end}T23:59:59`)
+        .not("lat", "is", null),
+    ]);
+
+    if (editsResult.data) {
+      editsResult.data.forEach((e) => {
         if (!editsMap[e.shift_id]) editsMap[e.shift_id] = [];
         editsMap[e.shift_id].push(e);
+      });
+    }
+
+    // Match logs to shifts by user_name + closest time
+    if (logsResult.data) {
+      shiftsData.forEach((s) => {
+        if (!s.clock_in) return;
+        const shiftTime = new Date(s.clock_in).getTime();
+        const match = logsResult.data.find((log) => {
+          if (log.user_name !== s.user_name) return false;
+          const logTime = new Date(log.client_time).getTime();
+          return Math.abs(logTime - shiftTime) < 120000; // within 2 min
+        });
+        if (match) {
+          geoMap[s.id] = { lat: match.lat, lng: match.lng };
+        }
       });
     }
   }
@@ -341,6 +370,7 @@ function renderShifts() {
         <td>${typeLabel}</td>
         <td>${esc(s.comment)}</td>
         <td>
+          ${geoIcon(s.id)}
           ${editsMap[s.id] ? `<span class="edit-indicator" data-id="${s.id}" title="Edited">✏️</span>` : ""}
           <button class="btn-edit" data-id="${s.id}">Edit</button>
         </td>
@@ -376,7 +406,10 @@ function renderShifts() {
           </div>
         </div>
         ${s.comment ? `<div class="card-comment">${esc(s.comment)}</div>` : ""}
-        <button class="btn-edit card-edit" data-id="${s.id}">Edit</button>
+        <div class="card-actions">
+          ${geoIcon(s.id)}
+          <button class="btn-edit card-edit" data-id="${s.id}">Edit</button>
+        </div>
       </div>`;
     })
     .join("");
@@ -436,6 +469,13 @@ function copyShiftsTable() {
 }
 
 // --- Helpers ---
+function geoIcon(shiftId) {
+  const geo = geoMap[shiftId];
+  if (!geo) return `<span class="geo-icon geo-none" title="No GPS">📍</span>`;
+  const url = `https://www.google.com/maps?q=${geo.lat},${geo.lng}`;
+  return `<a href="${url}" target="_blank" rel="noopener" class="geo-icon geo-ok" title="${geo.lat.toFixed(4)}, ${geo.lng.toFixed(4)}">📍</a>`;
+}
+
 function esc(str) {
   if (!str) return "";
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
