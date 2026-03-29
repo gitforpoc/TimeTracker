@@ -1062,6 +1062,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
     padding: 8px 8px;
   }
 
+  thead {
+    top: 70px;
+  }
+
   /* Shifts: hide table, show cards */
   #shifts-table {
     display: none;
@@ -1084,6 +1088,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
   .admin-header h1 {
     font-size: 13px;
+  }
+
+  thead {
+    top: 60px;
   }
 }
 
