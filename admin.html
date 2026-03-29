@@ -42,15 +42,62 @@
 
       <!-- Tab navigation -->
       <nav class="tabs">
-        <button class="tab active" data-tab="status">
-          Live Status <span id="working-badge" class="tab-badge hidden">0</span>
-        </button>
+        <button class="tab active" data-tab="dashboard">Dashboard</button>
+        <button class="tab" data-tab="employees">Employees</button>
         <button class="tab" data-tab="shifts">Shift Log</button>
-        <button class="tab" data-tab="map">🗺️ Map</button>
+        <button class="tab" data-tab="status">
+          Live <span id="working-badge" class="tab-badge hidden">0</span>
+        </button>
+        <button class="tab" data-tab="map">Map</button>
       </nav>
 
+      <!-- Dashboard tab -->
+      <section id="tab-dashboard" class="tab-content active-tab">
+        <div class="dash-period-row">
+          <span id="dash-period-label" class="dash-period-label"></span>
+          <button id="dash-prev" class="btn-sm">← Prev</button>
+          <button id="dash-next" class="btn-sm">Next →</button>
+        </div>
+        <div id="dash-cards" class="dash-cards"></div>
+        <div class="dash-section">
+          <h3 class="dash-section-title">Hours by Employee</h3>
+          <div id="dash-bars" class="dash-bars"></div>
+        </div>
+        <div class="dash-section">
+          <h3 class="dash-section-title">Daily Activity (last 14 days)</h3>
+          <div id="dash-daily" class="dash-daily"></div>
+        </div>
+        <div class="dash-section">
+          <h3 class="dash-section-title">Alerts</h3>
+          <div id="dash-alerts" class="dash-alerts"></div>
+        </div>
+        <div class="dash-section">
+          <h3 class="dash-section-title">Warehouse Orders</h3>
+          <div class="dash-placeholder">Coming soon — WMS integration</div>
+        </div>
+      </section>
+
+      <!-- Employees tab -->
+      <section id="tab-employees" class="tab-content hidden">
+        <div class="emp-header">
+          <label class="emp-filter-label">
+            Warehouse
+            <select id="emp-warehouse-filter">
+              <option value="">All</option>
+            </select>
+          </label>
+        </div>
+        <div id="emp-list" class="emp-list"></div>
+        <div id="emp-detail" class="emp-detail hidden">
+          <button id="emp-back" class="btn-sm">← Back to list</button>
+          <h3 id="emp-detail-name" class="emp-detail-name"></h3>
+          <div id="emp-detail-cards" class="dash-cards"></div>
+          <div id="emp-detail-table" class="emp-detail-table"></div>
+        </div>
+      </section>
+
       <!-- Live Status tab -->
-      <section id="tab-status" class="tab-content active-tab">
+      <section id="tab-status" class="tab-content hidden">
         <div class="status-header">
           <span id="status-count"></span>
           <button id="refresh-status" class="btn-sm">Refresh</button>

@@ -4,7 +4,7 @@ import { checkAdminAuth, getSupabaseClient } from "../auth.js";
 // --- State ---
 let supabase = null;
 let authToken = null;
-let currentTab = "status";
+let currentTab = "dashboard";
 let shiftsData = [];
 let editsMap = {};
 let geoMap = {};
@@ -18,6 +18,8 @@ let leafletMap = null;
 let zoneLayers = []; // { zone, greenCircle, yellowCircle, marker }
 let employeeLayers = []; // employee markers on map
 let editingZone = null; // zone being edited
+let dashPeriod = null; // { start: Date, end: Date, label: string }
+let employeeSettings = []; // from tt_employee_settings
 
 // --- DOM ---
 const $ = (sel) => document.querySelector(sel);
@@ -52,9 +54,12 @@ async function init() {
   setupTabs();
   setupFilters();
   setupKeyboard();
+  setupDashboardNav();
   loadEmployeeList();
   loadZones(); // preload zones for geo icons
   loadStatus();
+  initDashPeriod();
+  loadDashboard();
 
   // Auto-refresh status every 60s
   statusInterval = setInterval(() => {
@@ -80,6 +85,8 @@ function setupTabs() {
       requestAnimationFrame(() => target.classList.add("active-tab"));
 
       // Auto-load on tab switch
+      if (currentTab === "dashboard") loadDashboard();
+      if (currentTab === "employees") loadEmployeesTab();
       if (currentTab === "shifts") loadShifts();
       if (currentTab === "map") initMap();
     });
@@ -377,7 +384,11 @@ function renderShifts() {
       const typeLabel =
         s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "";
 
-      return `<tr class="${s.type !== 'work' ? 'row-special' : ''}" data-id="${s.id}">
+      const rowClass = s.type !== 'work' ? 'row-special'
+        : s.duration_minutes > 720 ? 'row-overtime'
+        : s.duration_minutes > 540 ? 'row-long' : '';
+
+      return `<tr class="${rowClass}" data-id="${s.id}">
         <td>${date}</td>
         <td>${s.user_name}</td>
         <td>${inTime}</td>
@@ -406,7 +417,11 @@ function renderShifts() {
       const typeLabel =
         s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "Work";
 
-      return `<div class="shift-card ${s.type !== 'work' ? 'card-special' : ''}" data-id="${s.id}">
+      const cardClass = s.type !== 'work' ? 'card-special'
+        : s.duration_minutes > 720 ? 'card-overtime'
+        : s.duration_minutes > 540 ? 'card-long' : '';
+
+      return `<div class="shift-card ${cardClass}" data-id="${s.id}">
         <div class="card-header">
           <span class="card-name">${s.user_name}</span>
           <span class="card-date">${date}</span>
@@ -1128,6 +1143,396 @@ function showEditHistory(shiftId, anchor) {
   popover.style.left = `${Math.min(rect.left, window.innerWidth - 320)}px`;
 
   document.body.appendChild(popover);
+}
+
+// --- Dashboard ---
+
+function getBimonthlyPeriod(date) {
+  const y = date.getFullYear();
+  const m = date.getMonth();
+  const d = date.getDate();
+  if (d <= 15) {
+    return {
+      start: new Date(y, m, 1),
+      end: new Date(y, m, 15, 23, 59, 59),
+      label: `${(m + 1).toString().padStart(2, "0")}/01 – ${(m + 1).toString().padStart(2, "0")}/15/${y}`,
+    };
+  }
+  const lastDay = new Date(y, m + 1, 0).getDate();
+  return {
+    start: new Date(y, m, 16),
+    end: new Date(y, m, lastDay, 23, 59, 59),
+    label: `${(m + 1).toString().padStart(2, "0")}/16 – ${(m + 1).toString().padStart(2, "0")}/${lastDay}/${y}`,
+  };
+}
+
+function shiftPeriod(dir) {
+  const ref = new Date(dashPeriod.start);
+  if (dir === -1) {
+    // prev
+    if (ref.getDate() === 16) {
+      return getBimonthlyPeriod(new Date(ref.getFullYear(), ref.getMonth(), 1));
+    }
+    const prev = new Date(ref.getFullYear(), ref.getMonth(), 0); // last day of prev month
+    return getBimonthlyPeriod(prev);
+  }
+  // next
+  if (ref.getDate() === 1) {
+    return getBimonthlyPeriod(new Date(ref.getFullYear(), ref.getMonth(), 16));
+  }
+  const next = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
+  return getBimonthlyPeriod(next);
+}
+
+function initDashPeriod() {
+  dashPeriod = getBimonthlyPeriod(new Date());
+  renderPeriodLabel();
+}
+
+function renderPeriodLabel() {
+  const el = $("#dash-period-label");
+  if (el) el.textContent = dashPeriod.label;
+}
+
+function setupDashboardNav() {
+  $("#dash-prev").addEventListener("click", () => {
+    dashPeriod = shiftPeriod(-1);
+    renderPeriodLabel();
+    loadDashboard();
+  });
+  $("#dash-next").addEventListener("click", () => {
+    dashPeriod = shiftPeriod(1);
+    renderPeriodLabel();
+    loadDashboard();
+  });
+  $("#emp-back").addEventListener("click", hideEmployeeDetail);
+}
+
+async function loadDashboard() {
+  if (!supabase || !dashPeriod) return;
+
+  const startISO = formatDateISO(dashPeriod.start);
+  const endISO = formatDateISO(dashPeriod.end);
+
+  const { data: shifts } = await supabase
+    .from("tt_shifts")
+    .select("id, user_name, clock_in, clock_out, duration_minutes, type")
+    .gte("clock_in", `${startISO}T00:00:00`)
+    .lte("clock_in", `${endISO}T23:59:59`)
+    .limit(5000);
+
+  const rows = shifts || [];
+  const workShifts = rows.filter((s) => s.type === "work");
+  const totalMin = workShifts.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const uniqueEmployees = [...new Set(rows.map((s) => s.user_name))];
+
+  // Summary cards
+  const cardsEl = $("#dash-cards");
+  cardsEl.innerHTML = `
+    <div class="dash-card"><div class="dash-card-label">Working Now</div><div class="dash-card-value accent-green">${workingNames.length}</div></div>
+    <div class="dash-card"><div class="dash-card-label">Shifts This Period</div><div class="dash-card-value accent-pink">${rows.length}</div></div>
+    <div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${Math.round(totalMin / 60)}</div></div>
+    <div class="dash-card"><div class="dash-card-label">Active Employees</div><div class="dash-card-value accent-yellow">${uniqueEmployees.length}</div></div>
+  `;
+
+  // Hours bar chart
+  const hoursByEmp = {};
+  workShifts.forEach((s) => {
+    hoursByEmp[s.user_name] = (hoursByEmp[s.user_name] || 0) + (s.duration_minutes || 0);
+  });
+  const sorted = Object.entries(hoursByEmp).sort((a, b) => b[1] - a[1]);
+  const maxMin = sorted.length ? sorted[0][1] : 1;
+
+  const barsEl = $("#dash-bars");
+  if (sorted.length === 0) {
+    barsEl.innerHTML = '<div class="dash-alert-none">No work shifts in this period</div>';
+  } else {
+    barsEl.innerHTML = sorted.map(([name, min]) => {
+      const pct = Math.max(1, Math.round((min / maxMin) * 100));
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      return `<div class="dash-bar-row">
+        <span class="dash-bar-name">${esc(name)}</span>
+        <div class="dash-bar-track"><div class="dash-bar-fill" style="width:${pct}%"></div></div>
+        <span class="dash-bar-hours">${h}h ${m}m</span>
+      </div>`;
+    }).join("");
+  }
+
+  // Daily activity (last 14 days from today, not from period)
+  const dailyEl = $("#dash-daily");
+  const today = new Date();
+  const days = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    days.push(d);
+  }
+  const dayCounts = {};
+  rows.forEach((s) => {
+    const key = new Date(s.clock_in).toDateString();
+    dayCounts[key] = (dayCounts[key] || 0) + 1;
+  });
+  const maxCount = Math.max(1, ...Object.values(dayCounts));
+
+  dailyEl.innerHTML = days.map((d) => {
+    const key = d.toDateString();
+    const count = dayCounts[key] || 0;
+    const hPct = count > 0 ? Math.max(8, Math.round((count / maxCount) * 100)) : 0;
+    const label = `${d.getMonth() + 1}/${d.getDate()}`;
+    return `<div class="dash-daily-bar">
+      <div class="dash-daily-fill" style="height:${hPct}%" title="${count} shifts"></div>
+      <span class="dash-daily-label">${label}</span>
+    </div>`;
+  }).join("");
+
+  // Alerts
+  const alertsEl = $("#dash-alerts");
+  const alerts = [];
+
+  // Long shifts
+  const longShifts = workShifts.filter((s) => s.duration_minutes > 720);
+  longShifts.forEach((s) => {
+    const h = Math.floor(s.duration_minutes / 60);
+    const m = s.duration_minutes % 60;
+    alerts.push({ type: "warn", icon: "⚠️", text: `${esc(s.user_name)} worked ${h}h ${m}m on ${formatDateShort(s.clock_in)}` });
+  });
+
+  // Open shifts
+  const openShifts = rows.filter((s) => s.type === "work" && !s.clock_out);
+  openShifts.forEach((s) => {
+    alerts.push({ type: "danger", icon: "🔴", text: `${esc(s.user_name)} has an open shift since ${formatDateShort(s.clock_in)} ${formatTimeShort(s.clock_in)}` });
+  });
+
+  if (alerts.length === 0) {
+    alertsEl.innerHTML = '<div class="dash-alert-none">No alerts for this period</div>';
+  } else {
+    alertsEl.innerHTML = alerts.map((a) =>
+      `<div class="dash-alert alert-${a.type}"><span class="dash-alert-icon">${a.icon}</span> ${a.text}</div>`
+    ).join("");
+  }
+}
+
+// --- Employees Tab ---
+
+async function loadEmployeesTab() {
+  if (!supabase || !dashPeriod) return;
+
+  // Load employee settings
+  const { data: settings } = await supabase.from("tt_employee_settings").select("*");
+  employeeSettings = settings || [];
+
+  const startISO = formatDateISO(dashPeriod.start);
+  const endISO = formatDateISO(dashPeriod.end);
+
+  const { data: shifts } = await supabase
+    .from("tt_shifts")
+    .select("user_name, duration_minutes, type")
+    .gte("clock_in", `${startISO}T00:00:00`)
+    .lte("clock_in", `${endISO}T23:59:59`)
+    .limit(5000);
+
+  const rows = shifts || [];
+
+  // Aggregate per employee
+  const empStats = {};
+  rows.forEach((s) => {
+    if (!empStats[s.user_name]) {
+      empStats[s.user_name] = { hours: 0, shifts: 0, workShifts: 0 };
+    }
+    empStats[s.user_name].shifts++;
+    if (s.type === "work") {
+      empStats[s.user_name].hours += s.duration_minutes || 0;
+      empStats[s.user_name].workShifts++;
+    }
+  });
+
+  // Build warehouse map
+  const whMap = {};
+  employeeSettings.forEach((es) => {
+    whMap[es.user_name] = es.warehouse || "Unassigned";
+  });
+
+  // Group by warehouse
+  const allNames = [...new Set([...Object.keys(empStats), ...employeeSettings.map((e) => e.user_name)])].sort();
+  const groups = {};
+  allNames.forEach((name) => {
+    const wh = whMap[name] || "Unassigned";
+    if (!groups[wh]) groups[wh] = [];
+    groups[wh].push(name);
+  });
+
+  // Populate warehouse filter
+  const filterEl = $("#emp-warehouse-filter");
+  const existingOpts = filterEl.querySelectorAll("option");
+  // Keep "All" option, remove others
+  while (filterEl.options.length > 1) filterEl.remove(1);
+  Object.keys(groups).sort().forEach((wh) => {
+    const opt = document.createElement("option");
+    opt.value = wh;
+    opt.textContent = wh;
+    filterEl.appendChild(opt);
+  });
+
+  const filterWh = filterEl.value;
+
+  // Render
+  const listEl = $("#emp-list");
+  let html = "";
+
+  const sortedGroups = Object.keys(groups).sort();
+  sortedGroups.forEach((wh) => {
+    if (filterWh && filterWh !== wh) return;
+    html += `<div class="emp-wh-group"><div class="emp-wh-header">${esc(wh)}</div>`;
+    groups[wh].forEach((name) => {
+      const stats = empStats[name] || { hours: 0, shifts: 0, workShifts: 0 };
+      const totalH = Math.round(stats.hours / 60);
+      const avg = stats.workShifts > 0 ? Math.round(stats.hours / stats.workShifts / 60 * 10) / 10 : 0;
+      const target = stats.workShifts * 480; // 8h per shift
+      const pct = target > 0 ? Math.min(150, Math.round((stats.hours / target) * 100)) : 0;
+      const isWorking = workingNames.includes(name);
+      const progressClass = pct > 120 ? "way-over" : pct > 100 ? "over" : "";
+
+      html += `<div class="emp-card" data-name="${esc(name)}">
+        <div class="emp-card-name"><span class="emp-status-dot ${isWorking ? "online" : "offline"}"></span>${esc(name)}</div>
+        <div class="emp-stat"><div class="emp-stat-value">${totalH}h</div><div class="emp-stat-label">Hours</div></div>
+        <div class="emp-stat"><div class="emp-stat-value">${stats.shifts}</div><div class="emp-stat-label">Shifts</div></div>
+        <div class="emp-stat"><div class="emp-stat-value">${avg}h</div><div class="emp-stat-label">Avg</div></div>
+        <div class="emp-progress-wrap"><div class="emp-progress-bar"><div class="emp-progress-fill ${progressClass}" style="width:${Math.min(100, pct)}%"></div></div></div>
+      </div>`;
+    });
+    html += "</div>";
+  });
+
+  listEl.innerHTML = html;
+
+  // Attach click handlers
+  listEl.querySelectorAll(".emp-card").forEach((card) => {
+    card.addEventListener("click", () => showEmployeeDetail(card.dataset.name));
+  });
+
+  // Filter change
+  filterEl.onchange = () => loadEmployeesTab();
+
+  // Ensure list visible, detail hidden
+  listEl.classList.remove("hidden");
+  $("#emp-detail").classList.add("hidden");
+}
+
+async function showEmployeeDetail(name) {
+  if (!supabase || !dashPeriod) return;
+
+  const startISO = formatDateISO(dashPeriod.start);
+  const endISO = formatDateISO(dashPeriod.end);
+
+  const [shiftsResult, editsResult] = await Promise.all([
+    supabase
+      .from("tt_shifts")
+      .select("id, clock_in, clock_out, duration_minutes, type, comment")
+      .eq("user_name", name)
+      .gte("clock_in", `${startISO}T00:00:00`)
+      .lte("clock_in", `${endISO}T23:59:59`)
+      .order("clock_in", { ascending: true }),
+    supabase
+      .from("tt_edits")
+      .select("shift_id")
+      .gte("created_at", `${startISO}T00:00:00`)
+      .lte("created_at", `${endISO}T23:59:59`),
+  ]);
+
+  const shifts = shiftsResult.data || [];
+  const editsCount = editsResult.data ? editsResult.data.length : 0;
+
+  // Summary
+  const workShifts = shifts.filter((s) => s.type === "work");
+  const totalMin = workShifts.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const totalH = Math.floor(totalMin / 60);
+  const totalM = totalMin % 60;
+  const avg = workShifts.length > 0 ? Math.round(totalMin / workShifts.length / 60 * 10) / 10 : 0;
+
+  $("#emp-detail-name").innerHTML = `${esc(name)}`;
+  $("#emp-detail-cards").innerHTML = `
+    <div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${totalH}h ${totalM}m</div></div>
+    <div class="dash-card"><div class="dash-card-label">Shifts</div><div class="dash-card-value accent-pink">${shifts.length}</div></div>
+    <div class="dash-card"><div class="dash-card-label">Avg Shift</div><div class="dash-card-value accent-green">${avg}h</div></div>
+    <div class="dash-card"><div class="dash-card-label">Edits</div><div class="dash-card-value accent-yellow">${editsCount}</div></div>
+  `;
+
+  // Day-by-day table
+  const shiftsByDate = {};
+  shifts.forEach((s) => {
+    const key = new Date(s.clock_in).toDateString();
+    if (!shiftsByDate[key]) shiftsByDate[key] = [];
+    shiftsByDate[key].push(s);
+  });
+
+  // Generate all dates in period
+  const allDates = [];
+  const cur = new Date(dashPeriod.start);
+  const endDate = new Date(dashPeriod.end);
+  while (cur <= endDate) {
+    allDates.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  let tableHtml = `<table class="emp-day-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th><th>In</th><th>Out</th><th>Hours</th></tr></thead><tbody>`;
+
+  allDates.forEach((d) => {
+    const key = d.toDateString();
+    const dayShifts = shiftsByDate[key];
+
+    if (!dayShifts || dayShifts.length === 0) {
+      tableHtml += `<tr class="no-data">
+        <td>${formatDateShort(d.toISOString())}</td>
+        <td>${dayNames[d.getDay()]}</td>
+        <td>—</td><td>—</td><td>—</td><td>—</td>
+      </tr>`;
+      return;
+    }
+
+    dayShifts.forEach((s) => {
+      let rowClass = "";
+      let statusLabel = "Work";
+      if (s.type === "day_off") { rowClass = "day-off"; statusLabel = "Day Off"; }
+      else if (s.type === "paid_off") { rowClass = "paid-off"; statusLabel = "Paid Off"; }
+
+      const min = s.duration_minutes || 0;
+      const h = Math.floor(min / 60);
+      const m = min % 60;
+      const hoursStr = min > 0 ? `${h}h ${m}m` : "—";
+
+      // Bar
+      let barClass = "bar-green";
+      let barWidth = 0;
+      if (s.type === "work" && min > 0) {
+        barWidth = Math.min(100, Math.round((min / 720) * 100)); // 12h = 100%
+        if (min > 600) barClass = "bar-red";
+        else if (min >= 480) barClass = "bar-yellow";
+      }
+
+      tableHtml += `<tr class="${rowClass}">
+        <td>${formatDateShort(s.clock_in)}</td>
+        <td>${dayNames[d.getDay()]}</td>
+        <td>${statusLabel}</td>
+        <td>${formatTimeShort(s.clock_in)}</td>
+        <td>${s.clock_out ? formatTimeShort(s.clock_out) : "—"}</td>
+        <td>${hoursStr}${barWidth > 0 ? ` <span class="emp-hour-bar ${barClass}" style="width:${barWidth}px"></span>` : ""}</td>
+      </tr>`;
+    });
+  });
+
+  tableHtml += "</tbody></table>";
+  $("#emp-detail-table").innerHTML = tableHtml;
+
+  // Show detail, hide list
+  $("#emp-list").classList.add("hidden");
+  $("#emp-detail").classList.remove("hidden");
+}
+
+function hideEmployeeDetail() {
+  $("#emp-detail").classList.add("hidden");
+  $("#emp-list").classList.remove("hidden");
 }
 
 // --- Start ---
