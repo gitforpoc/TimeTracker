@@ -1,5 +1,4 @@
 import "../style.css";
-import { registerSW } from "virtual:pwa-register";
 import { QUOTES } from "./constants.js";
 import { store } from "./store.js";
 import { sync } from "./sync.js";
@@ -28,21 +27,6 @@ import {
   showToast,
   minsToHm,
 } from "./utils.js";
-
-// --- PWA Update (production only) ---
-let updateSW = null;
-if (import.meta.env.PROD) {
-  updateSW = registerSW({
-    onNeedRefresh() {
-      document.getElementById("update-banner").classList.remove("hidden");
-    },
-    onOfflineReady() {},
-  });
-
-  document.getElementById("update-btn").addEventListener("click", () => {
-    updateSW(true);
-  });
-}
 
 // --- DOM Elements ---
 const els = {
@@ -422,6 +406,26 @@ els.dateEnd.addEventListener("change", () => {
 });
 
 els.restoreInput.addEventListener("change", importData);
+
+// --- Check for Updates ---
+document.getElementById("check-update-btn").addEventListener("click", async () => {
+  const btn = document.getElementById("check-update-btn");
+  btn.textContent = "Checking...";
+  btn.disabled = true;
+  try {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((name) => caches.delete(name)));
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg) {
+      await reg.unregister();
+    }
+    showToast("Updating...");
+    location.reload();
+  } catch (e) {
+    // Fallback: just reload
+    location.reload();
+  }
+});
 
 // Expose for inline onclick handlers in HTML
 window.app = { addSpecialDay, copyReport, exportData, triggerRestore, clearData: () => store.clearAll() };
