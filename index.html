@@ -130,6 +130,17 @@
               <span>Send Location (GPS)</span>
               <input type="checkbox" id="geo-toggle" />
             </label>
+            <div class="btn-row settings-actions">
+              <button class="btn-outline" onclick="app.exportData()">
+                Backup
+              </button>
+              <button class="btn-outline" onclick="app.triggerRestore()">
+                Restore
+              </button>
+              <button id="check-update-btn" class="btn-outline">
+                Update
+              </button>
+            </div>
           </div>
 
           <button class="btn-outline" onclick="app.copyReport()">
@@ -137,20 +148,6 @@
           </button>
 
           <ul id="history-list"></ul>
-
-          <div class="bottom-actions">
-            <div class="btn-row">
-              <button class="btn-outline" onclick="app.exportData()">
-                Backup
-              </button>
-              <button class="btn-outline" onclick="app.triggerRestore()">
-                Restore
-              </button>
-            </div>
-            <button id="check-update-btn" class="btn-outline btn-update-check">
-              Check for Updates
-            </button>
-          </div>
           <input
             type="file"
             id="restore-file"

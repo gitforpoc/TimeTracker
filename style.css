@@ -535,19 +535,9 @@ select {
   padding: 4px 0;
 }
 
-/* Bottom Actions */
-.bottom-actions {
-  margin-top: 30px;
-  border-top: 1px solid #ddd;
-  padding-top: 20px;
-}
-.bottom-actions .btn-row {
-  margin-bottom: 10px;
-}
-.btn-update-check {
-  width: 100%;
-  font-size: 13px;
-  padding: 8px;
+/* Settings Actions */
+.settings-actions {
+  margin-top: 8px;
 }
 
 /* Custom Range */
