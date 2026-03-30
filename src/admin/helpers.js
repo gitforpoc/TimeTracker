@@ -45,3 +45,16 @@ export function showToast(msg) {
   el.classList.add("show");
   setTimeout(() => el.classList.remove("show"), 2000);
 }
+
+// --- Session state persistence ---
+const SESSION_KEY = "tt_admin_state";
+
+export function saveSession(data) {
+  sessionStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
+
+export function loadSession() {
+  try {
+    return JSON.parse(sessionStorage.getItem(SESSION_KEY)) || null;
+  } catch { return null; }
+}

@@ -1,7 +1,7 @@
 import "./admin.css";
 import { checkAdminAuth, getSupabaseClient } from "../auth.js";
 import { state } from "./state.js";
-import { $, $$, formatDateISO } from "./helpers.js";
+import { $, $$, formatDateISO, saveSession, loadSession } from "./helpers.js";
 import { loadStatus } from "./status.js";
 import { setupFilters, loadShifts, loadEmployeeList } from "./shifts.js";
 import { setupEditListeners, closeEditModal, closeConfirmModal } from "./editModal.js";
@@ -9,6 +9,19 @@ import { initMap } from "./map.js";
 import { loadZones } from "./map.js";
 import { setupDashboardNav, initDashPeriod, loadDashboard } from "./dashboard.js";
 import { loadEmployeesTab } from "./employees.js";
+
+// --- Session state ---
+function persistState() {
+  saveSession({
+    tab: state.currentTab,
+    filterStart: $("#filter-start")?.value,
+    filterEnd: $("#filter-end")?.value,
+    filterEmployee: $("#filter-employee")?.value,
+    filterWarehouse: ($("#filter-warehouse") || {}).value,
+    filterZone: ($("#filter-zone") || {}).value,
+    empWarehouse: ($("#emp-warehouse-filter") || {}).value,
+  });
+}
 
 // --- Init ---
 async function init() {
@@ -27,29 +40,55 @@ async function init() {
   $("#auth-gate").classList.add("hidden");
   $("#dashboard").classList.remove("hidden");
 
-  // Set default date range (current week, Mon-today)
-  const today = new Date();
-  const monday = new Date(today);
-  const dayOfWeek = today.getDay();
-  const daysBack = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-  monday.setDate(today.getDate() - daysBack);
-  $("#filter-start").value = formatDateISO(monday);
-  $("#filter-end").value = formatDateISO(today);
+  const saved = loadSession();
+
+  // Set default date range (current week, Mon-today) or restore
+  if (saved?.filterStart) {
+    $("#filter-start").value = saved.filterStart;
+    $("#filter-end").value = saved.filterEnd;
+  } else {
+    const today = new Date();
+    const monday = new Date(today);
+    const dayOfWeek = today.getDay();
+    const daysBack = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    monday.setDate(today.getDate() - daysBack);
+    $("#filter-start").value = formatDateISO(monday);
+    $("#filter-end").value = formatDateISO(today);
+  }
 
   setupTabs();
   setupFilters();
   setupKeyboard();
   setupDashboardNav();
-  loadEmployeeList();
+  await loadEmployeeList();
   loadZones(); // preload zones for geo icons
   loadStatus();
   initDashPeriod();
-  loadDashboard();
+
+  // Restore filters after employee list is loaded
+  if (saved) {
+    if (saved.filterWarehouse && $("#filter-warehouse")) $("#filter-warehouse").value = saved.filterWarehouse;
+    if (saved.filterEmployee) $("#filter-employee").value = saved.filterEmployee;
+    if (saved.filterZone && $("#filter-zone")) $("#filter-zone").value = saved.filterZone;
+    if (saved.empWarehouse && $("#emp-warehouse-filter")) $("#emp-warehouse-filter").value = saved.empWarehouse;
+  }
+
+  // Restore active tab or default to dashboard
+  const restoreTab = saved?.tab || "dashboard";
+  if (restoreTab !== "dashboard") {
+    const tabBtn = $(`.tab[data-tab="${restoreTab}"]`);
+    if (tabBtn) tabBtn.click();
+  } else {
+    loadDashboard();
+  }
 
   // Auto-refresh status every 60s
   state.statusInterval = setInterval(() => {
     if (state.currentTab === "status") loadStatus();
   }, 60000);
+
+  // Persist state on page unload
+  window.addEventListener("beforeunload", persistState);
 }
 
 // --- Tabs ---
@@ -68,6 +107,8 @@ function setupTabs() {
       target.classList.remove("hidden");
       // Trigger transition after removing hidden
       requestAnimationFrame(() => target.classList.add("active-tab"));
+
+      persistState();
 
       // Auto-load on tab switch
       if (state.currentTab === "dashboard") loadDashboard();
