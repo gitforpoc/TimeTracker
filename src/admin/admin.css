@@ -1635,6 +1635,40 @@ tr.row-overtime td {
   background: var(--red-dim);
 }
 
+/* Summary table */
+.shifts-summary-view {
+  margin-top: 16px;
+}
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.summary-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  padding: 10px 12px;
+  background: var(--navy-deep);
+  border-bottom: 1px solid var(--border);
+}
+.summary-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+}
+.summary-row:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+.summary-total td {
+  background: rgba(99, 102, 241, 0.08);
+  font-weight: 700;
+  border-top: 2px solid var(--accent, #6366f1);
+}
+
 .shift-card.card-long {
   border-color: rgba(251, 191, 36, 0.3);
   background: var(--yellow-dim);

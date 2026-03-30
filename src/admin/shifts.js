@@ -150,10 +150,121 @@ export async function loadShifts() {
     });
   }
 
-  renderShifts();
+  // Decide: summary view (no specific employee) or detail view
+  const selectedEmployee = $("#filter-employee").value;
+  const showSummary = !selectedEmployee || selectedEmployee === "__working__";
+
+  if (showSummary) {
+    renderShiftsSummary();
+  } else {
+    renderShifts();
+  }
+}
+
+function renderShiftsSummary() {
+  const empty = $("#shifts-empty");
+  const table = $("#shifts-table");
+  const cards = $("#shifts-cards");
+  const pagination = $(".pagination");
+  const summaryEl = $("#shifts-summary-table");
+
+  // Hide detail views
+  table.classList.add("hidden");
+  cards.classList.add("hidden");
+  pagination.classList.add("hidden");
+
+  if (state.shiftsData.length === 0) {
+    empty.classList.remove("hidden");
+    if (summaryEl) summaryEl.classList.add("hidden");
+    return;
+  }
+  empty.classList.add("hidden");
+
+  // Aggregate by employee
+  const stats = {};
+  state.shiftsData.forEach((s) => {
+    if (!stats[s.user_name]) stats[s.user_name] = { shifts: 0, minutes: 0, workShifts: 0 };
+    stats[s.user_name].shifts++;
+    if (s.type === "work") {
+      stats[s.user_name].minutes += s.duration_minutes || 0;
+      stats[s.user_name].workShifts++;
+    }
+  });
+
+  // Get warehouse info
+  const whMap = {};
+  state.employeeSettings.forEach((e) => { whMap[e.user_name] = e.warehouse || "—"; });
+
+  const sorted = Object.entries(stats).sort((a, b) => b[1].minutes - a[1].minutes);
+  const totalMinutes = sorted.reduce((sum, [, s]) => sum + s.minutes, 0);
+  const totalShifts = sorted.reduce((sum, [, s]) => sum + s.shifts, 0);
+
+  $("#shifts-count").textContent = `${totalShifts} shifts`;
+  $("#shifts-hours").textContent = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m total`;
+  $("#shifts-avg").textContent = `${sorted.length} employees`;
+
+  let html = `<table class="summary-table"><thead><tr>
+    <th>Employee</th><th>Warehouse</th><th>Shifts</th><th>Total Hours</th><th>Avg Shift</th><th>Decimal</th>
+  </tr></thead><tbody>`;
+
+  sorted.forEach(([name, s]) => {
+    const h = Math.floor(s.minutes / 60);
+    const m = s.minutes % 60;
+    const avg = s.workShifts > 0 ? (s.minutes / s.workShifts / 60).toFixed(1) : "—";
+    const decimal = (s.minutes / 60).toFixed(2); // for payroll multiplication
+    html += `<tr class="summary-row" data-name="${esc(name)}">
+      <td><strong>${esc(name)}</strong></td>
+      <td>${esc(whMap[name] || "—")}</td>
+      <td>${s.shifts}</td>
+      <td>${h}h ${m}m</td>
+      <td>${avg}h</td>
+      <td>${decimal}</td>
+    </tr>`;
+  });
+
+  // Totals row
+  const totalH = Math.floor(totalMinutes / 60);
+  const totalM = totalMinutes % 60;
+  const totalDecimal = (totalMinutes / 60).toFixed(2);
+  html += `<tr class="summary-total">
+    <td><strong>TOTAL</strong></td><td></td>
+    <td>${totalShifts}</td>
+    <td>${totalH}h ${totalM}m</td>
+    <td></td>
+    <td>${totalDecimal}</td>
+  </tr>`;
+
+  html += "</tbody></table>";
+
+  // Render into summary container (create if needed)
+  if (!summaryEl) {
+    const div = document.createElement("div");
+    div.id = "shifts-summary-table";
+    div.className = "shifts-summary-view";
+    // Insert before shifts-table
+    table.parentElement.insertBefore(div, table);
+    div.innerHTML = html;
+  } else {
+    summaryEl.innerHTML = html;
+    summaryEl.classList.remove("hidden");
+  }
+
+  // Click row → filter to that employee
+  document.querySelectorAll(".summary-row").forEach((row) => {
+    row.style.cursor = "pointer";
+    row.addEventListener("click", () => {
+      $("#filter-employee").value = row.dataset.name;
+      state.currentPage = 0;
+      loadShifts();
+    });
+  });
 }
 
 export function renderShifts() {
+  // Hide summary if visible
+  const summaryEl = $("#shifts-summary-table");
+  if (summaryEl) summaryEl.classList.add("hidden");
+
   const start = state.currentPage * state.PAGE_SIZE;
   const page = state.shiftsData.slice(start, start + state.PAGE_SIZE);
   const totalMinutes = state.shiftsData.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
