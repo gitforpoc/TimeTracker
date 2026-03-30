@@ -106,13 +106,19 @@ export async function loadShifts() {
         .select("shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
         .in("shift_id", shiftIds)
         .order("created_at", { ascending: true }),
-      state.supabase
-        .from("tt_logs")
-        .select("user_name, action, client_time, lat, lng")
-        .in("action", ["Clock In", "Clock Out"])
-        .gte("client_time", `${start}T00:00:00`)
-        .lte("client_time", `${end}T23:59:59`)
-        .not("lat", "is", null),
+      // Extend end by +1 day to catch overnight Clock Out GPS
+      (() => {
+        const extEnd = new Date(end);
+        extEnd.setDate(extEnd.getDate() + 1);
+        const extEndISO = extEnd.toISOString().slice(0, 10);
+        return state.supabase
+          .from("tt_logs")
+          .select("user_name, action, client_time, lat, lng")
+          .in("action", ["Clock In", "Clock Out"])
+          .gte("client_time", `${start}T00:00:00`)
+          .lte("client_time", `${extEndISO}T23:59:59`)
+          .not("lat", "is", null);
+      })(),
     ]);
 
     if (editsResult.data) {
