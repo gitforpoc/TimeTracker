@@ -108,8 +108,8 @@ export async function loadShifts() {
         .order("created_at", { ascending: true }),
       state.supabase
         .from("tt_logs")
-        .select("user_name, client_time, lat, lng")
-        .eq("action", "Clock In")
+        .select("user_name, action, client_time, lat, lng")
+        .in("action", ["Clock In", "Clock Out"])
         .gte("client_time", `${start}T00:00:00`)
         .lte("client_time", `${end}T23:59:59`)
         .not("lat", "is", null),
@@ -122,16 +122,30 @@ export async function loadShifts() {
       });
     }
 
-    // Match logs to shifts by user_name + closest time
+    // Match logs to shifts: prefer Clock In GPS, fallback to Clock Out GPS
     if (logsResult.data) {
+      const clockInLogs = logsResult.data.filter((l) => l.action === "Clock In");
+      const clockOutLogs = logsResult.data.filter((l) => l.action === "Clock Out");
+
       state.shiftsData.forEach((s) => {
         if (!s.clock_in) return;
-        const shiftTime = new Date(s.clock_in).getTime();
-        const match = logsResult.data.find((log) => {
+
+        // Try Clock In match first
+        const inTime = new Date(s.clock_in).getTime();
+        let match = clockInLogs.find((log) => {
           if (log.user_name !== s.user_name) return false;
-          const logTime = new Date(log.client_time).getTime();
-          return Math.abs(logTime - shiftTime) < 120000; // within 2 min
+          return Math.abs(new Date(log.client_time).getTime() - inTime) < 120000;
         });
+
+        // Fallback: Clock Out match
+        if (!match && s.clock_out) {
+          const outTime = new Date(s.clock_out).getTime();
+          match = clockOutLogs.find((log) => {
+            if (log.user_name !== s.user_name) return false;
+            return Math.abs(new Date(log.client_time).getTime() - outTime) < 120000;
+          });
+        }
+
         if (match) {
           state.geoMap[s.id] = { lat: match.lat, lng: match.lng };
         }
