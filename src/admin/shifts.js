@@ -1,0 +1,358 @@
+import { state } from "./state.js";
+import { $, $$, esc, formatDateShort, formatTimeShort, showToast } from "./helpers.js";
+import { getZoneColor, geoIcon, geoZoneLabel } from "./geo.js";
+
+// --- Shifts ---
+export function setupFilters() {
+  $("#apply-filters").addEventListener("click", () => {
+    state.currentPage = 0;
+    loadShifts();
+  });
+  $("#copy-table").addEventListener("click", copyShiftsTable);
+  $("#prev-page").addEventListener("click", () => {
+    if (state.currentPage > 0) {
+      state.currentPage--;
+      renderShifts();
+    }
+  });
+  $("#next-page").addEventListener("click", () => {
+    const maxPage = Math.floor((state.shiftsData.length - 1) / state.PAGE_SIZE);
+    if (state.currentPage < maxPage) {
+      state.currentPage++;
+      renderShifts();
+    }
+  });
+}
+
+export async function loadShifts() {
+  const start = $("#filter-start").value;
+  const end = $("#filter-end").value;
+  const employee = $("#filter-employee").value;
+
+  if (!start || !end) return;
+
+  // Show loading
+  const loading = $("#shifts-loading");
+  const table = $("#shifts-table");
+  const cards = $("#shifts-cards");
+  const empty = $("#shifts-empty");
+  const pagination = $(".pagination");
+
+  loading.classList.remove("hidden");
+  table.style.opacity = "0.4";
+  cards.style.opacity = "0.4";
+  empty.classList.add("hidden");
+
+  let query = state.supabase
+    .from("tt_shifts")
+    .select("id, user_name, clock_in, clock_out, duration_minutes, type, comment")
+    .gte("clock_in", `${start}T00:00:00`)
+    .lte("clock_in", `${end}T23:59:59`)
+    .order("clock_in", { ascending: false })
+    .limit(5000);
+
+  if (employee === "__working__") {
+    // Filter to only currently working employees
+    if (state.workingNames.length > 0) {
+      query = query.in("user_name", state.workingNames);
+    } else {
+      // No one working — show empty
+      state.shiftsData = [];
+      loading.classList.add("hidden");
+      table.style.opacity = "1";
+      cards.style.opacity = "1";
+      renderShifts();
+      return;
+    }
+  } else if (employee) {
+    query = query.eq("user_name", employee);
+  }
+
+  const { data, error } = await query;
+
+  loading.classList.add("hidden");
+  table.style.opacity = "1";
+  cards.style.opacity = "1";
+
+  if (error) {
+    console.error("Shifts error:", error);
+    return;
+  }
+
+  state.shiftsData = data || [];
+  state.currentPage = 0;
+
+  // Load edit history + geo data for these shifts
+  state.editsMap = {};
+  state.geoMap = {};
+  if (state.shiftsData.length > 0) {
+    const shiftIds = state.shiftsData.map((s) => s.id);
+
+    // Fetch edits and geo in parallel
+    const [editsResult, logsResult] = await Promise.all([
+      state.supabase
+        .from("tt_edits")
+        .select("shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
+        .in("shift_id", shiftIds)
+        .order("created_at", { ascending: true }),
+      state.supabase
+        .from("tt_logs")
+        .select("user_name, client_time, lat, lng")
+        .eq("action", "Clock In")
+        .gte("client_time", `${start}T00:00:00`)
+        .lte("client_time", `${end}T23:59:59`)
+        .not("lat", "is", null),
+    ]);
+
+    if (editsResult.data) {
+      editsResult.data.forEach((e) => {
+        if (!state.editsMap[e.shift_id]) state.editsMap[e.shift_id] = [];
+        state.editsMap[e.shift_id].push(e);
+      });
+    }
+
+    // Match logs to shifts by user_name + closest time
+    if (logsResult.data) {
+      state.shiftsData.forEach((s) => {
+        if (!s.clock_in) return;
+        const shiftTime = new Date(s.clock_in).getTime();
+        const match = logsResult.data.find((log) => {
+          if (log.user_name !== s.user_name) return false;
+          const logTime = new Date(log.client_time).getTime();
+          return Math.abs(logTime - shiftTime) < 120000; // within 2 min
+        });
+        if (match) {
+          state.geoMap[s.id] = { lat: match.lat, lng: match.lng };
+        }
+      });
+    }
+  }
+
+  // Zone filter
+  const zoneFilter = ($("#filter-zone") || {}).value;
+  if (zoneFilter) {
+    state.shiftsData = state.shiftsData.filter((s) => {
+      const geo = state.geoMap[s.id];
+      if (zoneFilter === "none") return !geo;
+      if (!geo) return false;
+      return getZoneColor(geo.lat, geo.lng) === zoneFilter;
+    });
+  }
+
+  renderShifts();
+}
+
+export function renderShifts() {
+  const start = state.currentPage * state.PAGE_SIZE;
+  const page = state.shiftsData.slice(start, start + state.PAGE_SIZE);
+  const totalMinutes = state.shiftsData.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+  const maxPage = Math.max(0, Math.ceil(state.shiftsData.length / state.PAGE_SIZE) - 1);
+
+  const shiftsWithDuration = state.shiftsData.filter((s) => s.duration_minutes > 0);
+  const avgMinutes = shiftsWithDuration.length > 0
+    ? Math.round(totalMinutes / shiftsWithDuration.length)
+    : 0;
+
+  $("#shifts-count").textContent = `${state.shiftsData.length} shifts`;
+  $("#shifts-hours").textContent = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m total`;
+  $("#shifts-avg").textContent = avgMinutes > 0
+    ? `${Math.floor(avgMinutes / 60)}h ${avgMinutes % 60}m avg`
+    : "";
+  $("#page-info").textContent = `Page ${state.currentPage + 1} of ${maxPage + 1}`;
+  $("#prev-page").disabled = state.currentPage === 0;
+  $("#next-page").disabled = state.currentPage >= maxPage;
+
+  // Show/hide empty state
+  const empty = $("#shifts-empty");
+  const table = $("#shifts-table");
+  const cards = $("#shifts-cards");
+  const pagination = $(".pagination");
+
+  if (state.shiftsData.length === 0) {
+    empty.classList.remove("hidden");
+    table.classList.add("hidden");
+    cards.classList.add("hidden");
+    pagination.classList.add("hidden");
+    return;
+  }
+
+  empty.classList.add("hidden");
+  table.classList.remove("hidden");
+  cards.classList.remove("hidden");
+  pagination.classList.remove("hidden");
+
+  // Desktop table
+  const tbody = $("#shifts-body");
+  tbody.innerHTML = page
+    .map((s) => {
+      const date = formatDateShort(s.clock_in);
+      const inTime = formatTimeShort(s.clock_in);
+      const outTime = s.clock_out ? formatTimeShort(s.clock_out) : "—";
+      const hours = s.duration_minutes
+        ? `${Math.floor(s.duration_minutes / 60)}h ${s.duration_minutes % 60}m`
+        : "—";
+      const typeLabel =
+        s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "";
+
+      const rowClass = s.type !== 'work' ? 'row-special'
+        : s.duration_minutes > 720 ? 'row-overtime'
+        : s.duration_minutes > 540 ? 'row-long' : '';
+
+      return `<tr class="${rowClass}" data-id="${s.id}">
+        <td>${date}</td>
+        <td>${esc(s.user_name)}</td>
+        <td>${inTime}</td>
+        <td>${outTime}</td>
+        <td>${hours}</td>
+        <td>${typeLabel}</td>
+        <td>${esc(s.comment)}</td>
+        <td>
+          ${geoIcon(s.id)}
+          ${state.editsMap[s.id] ? `<span class="edit-indicator" data-id="${s.id}" title="Edited">✏️</span>` : ""}
+          <button class="btn-edit" data-id="${s.id}">Edit</button>
+        </td>
+      </tr>`;
+    })
+    .join("");
+
+  // Mobile cards
+  cards.innerHTML = page
+    .map((s) => {
+      const date = formatDateShort(s.clock_in);
+      const inTime = formatTimeShort(s.clock_in);
+      const outTime = s.clock_out ? formatTimeShort(s.clock_out) : "—";
+      const hours = s.duration_minutes
+        ? `${Math.floor(s.duration_minutes / 60)}h ${s.duration_minutes % 60}m`
+        : "—";
+      const typeLabel =
+        s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "Work";
+
+      const cardClass = s.type !== 'work' ? 'card-special'
+        : s.duration_minutes > 720 ? 'card-overtime'
+        : s.duration_minutes > 540 ? 'card-long' : '';
+
+      return `<div class="shift-card ${cardClass}" data-id="${s.id}">
+        <div class="card-header">
+          <span class="card-name">${esc(s.user_name)}</span>
+          <span class="card-date">${date}</span>
+        </div>
+        <div class="card-body">
+          <div class="card-times">
+            <span class="card-label">In</span> <span class="card-value">${inTime}</span>
+            <span class="card-label">Out</span> <span class="card-value">${outTime}</span>
+          </div>
+          <div class="card-meta">
+            <span class="card-hours">${hours}</span>
+            ${typeLabel !== "Work" ? `<span class="card-type">${typeLabel}</span>` : ""}
+          </div>
+        </div>
+        ${s.comment ? `<div class="card-comment">${esc(s.comment)}</div>` : ""}
+        <div class="card-actions">
+          ${geoIcon(s.id)}
+          <button class="btn-edit card-edit" data-id="${s.id}">Edit</button>
+        </div>
+      </div>`;
+    })
+    .join("");
+
+  // Attach mini-map popups to geo icons
+  attachGeoPopups();
+}
+
+// --- Employee list ---
+export async function loadEmployeeList() {
+  // Get distinct employee names from profiles (lightweight query)
+  let names = [];
+
+  const { data: profiles } = await state.supabase
+    .from("profiles")
+    .select("name")
+    .order("name");
+
+  if (profiles && profiles.length > 0) {
+    names = [...new Set(profiles.map((p) => p.name).filter(Boolean))];
+  } else {
+    // Fallback: get distinct names from shifts
+    const { data } = await state.supabase
+      .from("tt_shifts")
+      .select("user_name")
+      .limit(5000);
+
+    if (!data) return;
+    names = [...new Set(data.map((r) => r.user_name))].sort();
+  }
+
+  const select = $("#filter-employee");
+  names.forEach((name) => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    select.appendChild(opt);
+  });
+}
+
+// --- Copy to clipboard ---
+export function copyShiftsTable() {
+  if (state.shiftsData.length === 0) return;
+
+  const header = "Date\tEmployee\tClock In\tClock Out\tHours\tType\tComment";
+  const rows = state.shiftsData.map((s) => {
+    const date = formatDateShort(s.clock_in);
+    const inTime = formatTimeShort(s.clock_in);
+    const outTime = s.clock_out ? formatTimeShort(s.clock_out) : "";
+    const hours = s.duration_minutes
+      ? (s.duration_minutes / 60).toFixed(2)
+      : "";
+    const type =
+      s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "Work";
+    return `${date}\t${s.user_name}\t${inTime}\t${outTime}\t${hours}\t${type}\t${s.comment || ""}`;
+  });
+
+  const text = [header, ...rows].join("\n");
+  navigator.clipboard.writeText(text).then(() => showToast("Copied!"));
+}
+
+// --- Mini-map popup for shift log geo icons ---
+export function attachGeoPopups() {
+  document.querySelectorAll(".geo-zone").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.preventDefault();
+      const shiftId = parseInt(el.dataset.shift);
+      const geo = state.geoMap[shiftId];
+      if (!geo) return;
+
+      // Remove existing popup
+      document.querySelectorAll(".minimap-popup").forEach((p) => p.remove());
+
+      const popup = document.createElement("div");
+      popup.className = "minimap-popup";
+      popup.innerHTML = `<div id="minimap-${shiftId}" style="width:300px;height:200px;"></div><button class="minimap-close">✕</button>`;
+      el.parentElement.style.position = "relative";
+      el.parentElement.appendChild(popup);
+
+      const mm = L.map(`minimap-${shiftId}`, { zoomControl: false, attributionControl: false })
+        .setView([geo.lat, geo.lng], 15);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19 }).addTo(mm);
+
+      // Draw zones
+      state.zonesData.forEach((z) => {
+        L.circle([z.lat, z.lng], { radius: z.radius_yellow, color: "#f59e0b", fillOpacity: 0.07, weight: 1 }).addTo(mm);
+        L.circle([z.lat, z.lng], { radius: z.radius_green, color: "#22c55e", fillOpacity: 0.12, weight: 2 }).addTo(mm);
+      });
+
+      // Employee marker
+      const { color } = geoZoneLabel(shiftId);
+      const colors = { green: "#22c55e", yellow: "#f59e0b", red: "#ef4444" };
+      L.circleMarker([geo.lat, geo.lng], {
+        radius: 8, color: colors[color] || "#888", fillColor: colors[color] || "#888", fillOpacity: 0.9, weight: 2,
+      }).addTo(mm);
+
+      setTimeout(() => mm.invalidateSize(), 100);
+
+      popup.querySelector(".minimap-close").addEventListener("click", () => {
+        mm.remove();
+        popup.remove();
+      });
+    });
+  });
+}
