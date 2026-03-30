@@ -28,6 +28,7 @@ export async function loadShifts() {
   const start = $("#filter-start").value;
   const end = $("#filter-end").value;
   const employee = $("#filter-employee").value;
+  const warehouse = ($("#filter-warehouse") || {}).value;
 
   if (!start || !end) return;
 
@@ -43,6 +44,16 @@ export async function loadShifts() {
   cards.style.opacity = "0.4";
   empty.classList.add("hidden");
 
+  // Resolve warehouse → employee names
+  let warehouseNames = null;
+  if (warehouse && !employee) {
+    const { data: settings } = await state.supabase
+      .from("tt_employee_settings")
+      .select("user_name")
+      .eq("warehouse", warehouse);
+    warehouseNames = settings ? settings.map((s) => s.user_name) : [];
+  }
+
   let query = state.supabase
     .from("tt_shifts")
     .select("id, user_name, clock_in, clock_out, duration_minutes, type, comment")
@@ -52,11 +63,9 @@ export async function loadShifts() {
     .limit(5000);
 
   if (employee === "__working__") {
-    // Filter to only currently working employees
     if (state.workingNames.length > 0) {
       query = query.in("user_name", state.workingNames);
     } else {
-      // No one working — show empty
       state.shiftsData = [];
       loading.classList.add("hidden");
       table.style.opacity = "1";
@@ -66,6 +75,8 @@ export async function loadShifts() {
     }
   } else if (employee) {
     query = query.eq("user_name", employee);
+  } else if (warehouseNames && warehouseNames.length > 0) {
+    query = query.in("user_name", warehouseNames);
   }
 
   const { data, error } = await query;
@@ -259,36 +270,53 @@ export function renderShifts() {
   attachGeoPopups();
 }
 
-// --- Employee list ---
+// --- Employee & Warehouse lists for Shift Log filters ---
 export async function loadEmployeeList() {
-  // Get distinct employee names from profiles (lightweight query)
-  let names = [];
+  // Get all employees from settings (22 employees, 8 warehouses)
+  const { data: settings } = await state.supabase
+    .from("tt_employee_settings")
+    .select("user_name, warehouse")
+    .order("user_name");
 
-  const { data: profiles } = await state.supabase
-    .from("profiles")
-    .select("name")
-    .order("name");
+  const employees = settings || [];
 
-  if (profiles && profiles.length > 0) {
-    names = [...new Set(profiles.map((p) => p.name).filter(Boolean))];
-  } else {
-    // Fallback: get distinct names from shifts
-    const { data } = await state.supabase
-      .from("tt_shifts")
-      .select("user_name")
-      .limit(5000);
-
-    if (!data) return;
-    names = [...new Set(data.map((r) => r.user_name))].sort();
-  }
-
+  // Populate employee dropdown
   const select = $("#filter-employee");
-  names.forEach((name) => {
+  // Keep existing "All" and "Working now" options, remove the rest
+  while (select.options.length > 2) select.remove(2);
+  employees.forEach((e) => {
     const opt = document.createElement("option");
-    opt.value = name;
-    opt.textContent = name;
+    opt.value = e.user_name;
+    opt.textContent = e.user_name;
     select.appendChild(opt);
   });
+
+  // Populate warehouse dropdown (for shift log)
+  const whSelect = $("#filter-warehouse");
+  if (whSelect) {
+    const warehouses = [...new Set(employees.map((e) => e.warehouse).filter(Boolean))].sort();
+    while (whSelect.options.length > 1) whSelect.remove(1);
+    warehouses.forEach((wh) => {
+      const opt = document.createElement("option");
+      opt.value = wh;
+      opt.textContent = wh;
+      whSelect.appendChild(opt);
+    });
+
+    // Warehouse filter: update employee dropdown to show only that warehouse's employees
+    whSelect.onchange = () => {
+      const selectedWh = whSelect.value;
+      while (select.options.length > 2) select.remove(2);
+      const filtered = selectedWh ? employees.filter((e) => e.warehouse === selectedWh) : employees;
+      filtered.forEach((e) => {
+        const opt = document.createElement("option");
+        opt.value = e.user_name;
+        opt.textContent = e.user_name;
+        select.appendChild(opt);
+      });
+      select.value = "";
+    };
+  }
 }
 
 // --- Copy to clipboard ---
