@@ -150,12 +150,23 @@ async function loadEmployeesOnMap() {
       iconAnchor: [10, 10],
     });
 
-    const m = L.marker([log.lat, log.lng], { icon: pulseIcon })
-      .addTo(state.leafletMap)
-      .bindPopup(`<b>${esc(emp.user_name)}</b><br>
+    const popupHtml = `<div class="emp-popup">
+        <b>${esc(emp.user_name)}</b><br>
         Since ${since.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}<br>
         Duration: ${hours}h ${mins}m<br>
-        Zone: <b style="color:${colors[color]}">${color.toUpperCase()}</b>`);
+        Zone: <b style="color:${colors[color]}">${color.toUpperCase()}</b>
+        <div style="margin-top:8px">
+          <button class="shock-btn" data-name="${esc(emp.user_name)}">⚡ Activate Shock Collar</button>
+        </div>
+      </div>`;
+
+    const m = L.marker([log.lat, log.lng], { icon: pulseIcon })
+      .addTo(state.leafletMap)
+      .bindPopup(popupHtml)
+      .on("popupopen", () => {
+        const btn = document.querySelector(`.shock-btn[data-name="${emp.user_name}"]`);
+        if (btn) btn.addEventListener("click", () => openShockModal(emp.user_name));
+      });
 
     state.employeeLayers.push(m);
   }
@@ -260,4 +271,57 @@ function closeZonePanel() {
   if (state.editingZone?._previewYellow) state.leafletMap.removeLayer(state.editingZone._previewYellow);
   state.editingZone = null;
   $("#zone-panel").classList.add("hidden");
+}
+
+// --- Shock Collar (Easter Egg) ---
+const SHOCK_LEVELS = [
+  { emoji: "😊", label: "Gentle Reminder", volt: "50V", effect: "A warm tingle" },
+  { emoji: "😬", label: "Wake Up Call", volt: "500V", effect: "That got attention" },
+  { emoji: "🤯", label: "Attitude Adjustment", volt: "5,000V", effect: "Hair standing up" },
+  { emoji: "💀", label: "You're Fired", volt: "50,000V", effect: "Terminated" },
+];
+
+function openShockModal(name) {
+  // Remove existing
+  document.querySelectorAll(".shock-modal-overlay").forEach((el) => el.remove());
+
+  const overlay = document.createElement("div");
+  overlay.className = "shock-modal-overlay";
+  const levelsHtml = SHOCK_LEVELS.map((l, i) => `
+    <button class="shock-level" data-level="${i}">
+      <span class="shock-emoji">${l.emoji}</span>
+      <span class="shock-label">${l.label}</span>
+      <span class="shock-volt">${l.volt}</span>
+    </button>
+  `).join("");
+
+  overlay.innerHTML = `
+    <div class="shock-modal">
+      <h3>⚡ Shock Collar — ${esc(name)}</h3>
+      <p class="shock-subtitle">Select intensity level:</p>
+      <div class="shock-levels">${levelsHtml}</div>
+      <button class="shock-cancel">Cancel</button>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector(".shock-cancel").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.querySelectorAll(".shock-level").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const level = SHOCK_LEVELS[btn.dataset.level];
+      overlay.querySelector(".shock-modal").innerHTML = `
+        <div class="shock-animation">
+          <div class="shock-zap">⚡</div>
+          <div class="shock-target">${level.emoji}</div>
+          <h3>${esc(name)}</h3>
+          <p class="shock-effect">${level.effect}</p>
+          <p class="shock-volt-big">${level.volt}</p>
+        </div>
+      `;
+      overlay.querySelector(".shock-modal").classList.add("shocking");
+      setTimeout(() => overlay.remove(), 2500);
+    });
+  });
 }

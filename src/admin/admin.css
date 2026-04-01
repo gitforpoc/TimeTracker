@@ -1263,6 +1263,103 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .geo-yellow { color: #f59e0b; }
 .geo-red { color: #ef4444; }
 
+/* Shock button in popup */
+.shock-btn {
+  background: linear-gradient(135deg, #f59e0b, #ef4444);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  transition: transform 0.1s;
+}
+.shock-btn:hover { transform: scale(1.03); }
+.shock-btn:active { transform: scale(0.97); }
+
+/* Shock modal */
+.shock-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.7);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.shock-modal {
+  background: var(--card-bg, #1a1a4a);
+  border-radius: 16px;
+  padding: 24px;
+  max-width: 340px;
+  width: 90%;
+  text-align: center;
+  color: var(--text, #fff);
+}
+.shock-modal h3 { margin: 0 0 4px; font-size: 18px; }
+.shock-subtitle { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
+.shock-levels { display: flex; flex-direction: column; gap: 8px; }
+.shock-level {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  color: var(--text, #fff);
+  text-align: left;
+}
+.shock-level:hover { background: rgba(255,255,255,0.12); transform: scale(1.02); }
+.shock-level:active { transform: scale(0.98); }
+.shock-emoji { font-size: 28px; }
+.shock-label { flex: 1; font-weight: 600; font-size: 14px; }
+.shock-volt { font-size: 12px; color: var(--text-dim); font-family: var(--mono); }
+.shock-cancel {
+  margin-top: 14px;
+  background: none;
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text-dim);
+  border-radius: 8px;
+  padding: 8px 20px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+/* Shock animation */
+.shock-animation { padding: 20px 0; }
+.shock-zap {
+  font-size: 60px;
+  animation: zap-flash 0.3s ease-in-out 3;
+}
+.shock-target {
+  font-size: 50px;
+  animation: shake 0.4s ease-in-out 3;
+  margin: 10px 0;
+}
+.shock-effect { color: var(--text-dim); font-size: 14px; margin: 8px 0 4px; }
+.shock-volt-big { font-size: 24px; font-weight: 800; color: #f59e0b; font-family: var(--mono); }
+.shocking {
+  animation: shock-bg 0.5s ease-in-out 2;
+}
+@keyframes zap-flash {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(1.5); }
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-8px) rotate(-5deg); }
+  75% { transform: translateX(8px) rotate(5deg); }
+}
+@keyframes shock-bg {
+  0%, 100% { background: var(--card-bg, #1a1a4a); }
+  50% { background: rgba(245, 158, 11, 0.15); }
+}
+
 /* ===== Dashboard Tab ===== */
 
 .dash-period-row {
