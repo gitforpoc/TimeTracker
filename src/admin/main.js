@@ -23,13 +23,59 @@ function persistState() {
   });
 }
 
+// --- Login ---
+function setupLogin() {
+  const form = $("#login-form");
+  if (!form) return;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = $("#login-email").value.trim();
+    const password = $("#login-password").value;
+    const btn = form.querySelector(".login-btn");
+    const errEl = $("#login-error");
+    errEl.classList.add("hidden");
+    btn.disabled = true;
+    btn.textContent = "Signing in...";
+
+    try {
+      const { getSupabaseClient } = await import("../auth.js");
+      const client = getSupabaseClient();
+      const { error } = await client.auth.signInWithPassword({ email, password });
+      if (error) {
+        errEl.textContent = error.message;
+        errEl.classList.remove("hidden");
+        btn.disabled = false;
+        btn.textContent = "Sign In";
+        return;
+      }
+      // Reload to re-check auth
+      location.reload();
+    } catch {
+      errEl.textContent = "Connection error. Try again.";
+      errEl.classList.remove("hidden");
+      btn.disabled = false;
+      btn.textContent = "Sign In";
+    }
+  });
+}
+
 // --- Init ---
 async function init() {
   const auth = await checkAdminAuth();
 
   if (!auth) {
     $("#auth-gate").classList.add("hidden");
-    $("#access-denied").classList.remove("hidden");
+    // Check if user has a session but no admin role
+    const client = getSupabaseClient();
+    const { data: { session } } = await client.auth.getSession();
+    if (session) {
+      // Logged in but not admin/supervisor
+      $("#access-denied").classList.remove("hidden");
+    } else {
+      // No session at all — show login form
+      $("#login-screen").classList.remove("hidden");
+      setupLogin();
+    }
     return;
   }
 

@@ -20,7 +20,20 @@
       <div class="gate-message">Checking access...</div>
     </div>
 
-    <!-- Denied screen -->
+    <!-- Login screen -->
+    <div id="login-screen" class="hidden">
+      <div class="gate-message">
+        <h2>TIME<span style="color:#ff4081">TRACKER</span> Admin</h2>
+        <form id="login-form" class="login-form">
+          <input type="email" id="login-email" placeholder="Email" required autocomplete="email" />
+          <input type="password" id="login-password" placeholder="Password" required autocomplete="current-password" />
+          <button type="submit" class="login-btn">Sign In</button>
+          <p id="login-error" class="login-error hidden"></p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Denied screen (authenticated but no admin role) -->
     <div id="access-denied" class="hidden">
       <div class="gate-message">
         <h2>Access Denied</h2>
