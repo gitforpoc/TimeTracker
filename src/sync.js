@@ -23,14 +23,14 @@ class SyncManager {
   async processQueue() {
     if (!this._getToken || !navigator.onLine || this.isSyncing || this.queue.length === 0) return;
 
-    const token = await this._getToken();
-    if (!token) return; // No valid session
-
     this.isSyncing = true;
     const queueCopy = [...this.queue];
 
     for (const item of queueCopy) {
       try {
+        // Fresh token for each item — prevents expiry mid-queue
+        const token = await this._getToken();
+        if (!token) break;
         await this._send(item.payload, token);
         this.queue = this.queue.filter((i) => i.id !== item.id);
         this._saveQueue();

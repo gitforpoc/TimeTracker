@@ -60,7 +60,13 @@ export async function openHistory() {
   if (isUserAuthenticated) {
     renderHistoryList(); // show local data first while loading
     renderReport();
+    const list = document.getElementById("history-list");
+    const syncNote = document.createElement("div");
+    syncNote.className = "sync-loading";
+    syncNote.textContent = "Syncing with server...";
+    list.prepend(syncNote);
     await fetchServerData();
+    syncNote.remove();
   }
 
   renderHistoryList();
@@ -165,8 +171,8 @@ async function fetchServerData() {
         comment: s.comment || null,
       };
     });
-  } catch {
-    // Silently fall back to localStorage
+  } catch (err) {
+    console.error("Failed to fetch server data:", err);
     serverShifts = null;
   }
 }

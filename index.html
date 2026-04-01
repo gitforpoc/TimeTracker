@@ -7,6 +7,7 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
     />
     <title>TimeTracker</title>
+    <meta name="description" content="Clock in/out, track shifts, and manage timesheets for warehouse operations." />
 
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#1c1c57" />
@@ -23,7 +24,7 @@
       <header>
         <div class="logo">TIME<span class="pink-text">TRACKER</span></div>
         <div class="history-wrapper">
-          <button id="history-btn" class="icon-btn">
+          <button id="history-btn" class="icon-btn" aria-label="Open history">
             <img
               src="iconlogs2.png"
               alt="History"
@@ -96,7 +97,7 @@
       <div id="history-view" class="modal hidden">
         <div class="modal-header">
           <h2>History & Reports</h2>
-          <button id="close-history" class="close-btn">✕</button>
+          <button id="close-history" class="close-btn" aria-label="Close history">✕</button>
         </div>
 
         <div class="modal-content">

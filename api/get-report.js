@@ -57,9 +57,19 @@ export default async function handler(req, res) {
         .json({ error: "Missing start or end date parameters." });
     }
 
+    // Validate date format
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(start) || !dateRegex.test(end)) {
+      return res.status(400).json({ error: "Invalid date format. Use YYYY-MM-DD." });
+    }
+
     // 4. Enforce max date range (90 days) to prevent accidental huge queries
     const startDate = new Date(start);
     const endDate = new Date(end);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: "Invalid date values." });
+    }
     const diffDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
     if (diffDays > 90) {
       return res
