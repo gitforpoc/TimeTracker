@@ -308,7 +308,7 @@ async function addSpecialDay(type) {
 // --- SSO Auth ---
 let isAuthenticated = false;
 
-async function initAuth() {
+async function initAuth(retryCount = 0) {
   const auth = await checkAuth();
   if (auth) {
     isAuthenticated = true;
@@ -331,8 +331,16 @@ async function initAuth() {
           return s?.access_token || null;
         });
         sync.processQueue();
+      } else if (retryCount < 2) {
+        // Session refresh may fail on cold start — retry after delay
+        console.warn(`Auth session null, retrying (${retryCount + 1}/2)...`);
+        setTimeout(() => initAuth(retryCount + 1), 3000);
       }
     }
+  } else if (store.userName && retryCount < 2) {
+    // Had a saved user but auth failed — likely session refresh issue, retry
+    console.warn(`Auth check failed for ${store.userName}, retrying (${retryCount + 1}/2)...`);
+    setTimeout(() => initAuth(retryCount + 1), 3000);
   }
   checkInputState();
 }
