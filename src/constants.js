@@ -9,6 +9,9 @@ export const QUOTES = [
   "Stay professional.",
 ];
 
+export const COMPLIANCE_MODE =
+  import.meta.env.VITE_COMPLIANCE_MODE === "true";
+
 export const STORAGE_KEYS = {
   DATA: "tt_data",
   STATUS: "tt_status",
@@ -17,4 +20,6 @@ export const STORAGE_KEYS = {
   AUTO_SHARE: "tt_autoShare",
   GEO_ENABLED: "tt_geoEnabled",
   SYNC_QUEUE: "tt_syncQueue",
+  GPS_CONSENT: "tt_gpsConsent",
+  DISCLAIMER_SEEN: "tt_disclaimerSeen",
 };

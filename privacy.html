@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy — TimeTracker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --navy: #1c1c57;
+        --pink: #ff399a;
+        --bg: #f4f5f7;
+        --font: "Poppins", sans-serif;
+      }
+      body {
+        font-family: var(--font);
+        background: var(--bg);
+        color: #1f2937;
+        margin: 0;
+        padding: 20px;
+        line-height: 1.7;
+      }
+      .container {
+        max-width: 700px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 16px;
+        padding: 40px 32px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+      }
+      h1 {
+        color: var(--navy);
+        font-size: 24px;
+        margin-top: 0;
+      }
+      h2 {
+        color: var(--navy);
+        font-size: 17px;
+        margin-top: 28px;
+        margin-bottom: 8px;
+      }
+      p, li {
+        font-size: 14px;
+        margin-bottom: 10px;
+      }
+      ul {
+        padding-left: 20px;
+      }
+      .back-link {
+        display: inline-block;
+        margin-bottom: 20px;
+        color: var(--pink);
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .updated {
+        color: #6b7280;
+        font-size: 12px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 13px;
+      }
+      th, td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      th {
+        color: var(--navy);
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <a href="/" class="back-link">&larr; Back to TimeTracker</a>
+      <h1>Privacy Policy</h1>
+      <p class="updated">Last updated: April 2026</p>
+
+      <h2>1. What This Application Does</h2>
+      <p>TimeTracker is an internal workforce management tool used to record employee clock-in/clock-out times, day off entries, and generate timesheet reports for payroll purposes.</p>
+
+      <h2>2. Data We Collect</h2>
+      <table>
+        <tr><th>Data Type</th><th>When Collected</th><th>Required?</th></tr>
+        <tr><td>Employee name</td><td>On every use</td><td>Yes</td></tr>
+        <tr><td>Clock in/out timestamps</td><td>On each clock event</td><td>Yes</td></tr>
+        <tr><td>Timezone</td><td>Automatically on each event</td><td>Yes</td></tr>
+        <tr><td>GPS coordinates (lat/lng)</td><td>Only at clock in/out, only if enabled</td><td>No (opt-in)</td></tr>
+        <tr><td>Comments</td><td>When manually entered</td><td>No</td></tr>
+        <tr><td>Device info (user agent)</td><td>On GPS consent acceptance</td><td>Only with GPS</td></tr>
+      </table>
+
+      <h2>3. GPS Location Data</h2>
+      <p>Location data is collected <strong>only when you explicitly enable</strong> the "Send Location (GPS)" toggle in Settings. When enabled:</p>
+      <ul>
+        <li>Coordinates are captured <strong>only at the moment</strong> of clock-in and clock-out events</li>
+        <li>There is <strong>no continuous or background tracking</strong></li>
+        <li>You may disable GPS at any time — the toggle is in Settings</li>
+        <li>Previously collected location data remains stored per retention policy</li>
+      </ul>
+
+      <h2>4. How We Use Your Data</h2>
+      <ul>
+        <li><strong>Payroll processing:</strong> Clock times and durations are used to calculate hours worked</li>
+        <li><strong>Location verification:</strong> GPS data (if enabled) helps verify shift location for timesheet accuracy</li>
+        <li><strong>Audit trail:</strong> Shift edits are logged for compliance and dispute resolution</li>
+        <li><strong>Reports:</strong> Aggregated data is used for workforce management dashboards</li>
+      </ul>
+      <p>We do not sell, share, or disclose your data to third parties. Data is accessible only to authorized supervisors and administrators within the organization.</p>
+
+      <h2>5. Data Storage & Security</h2>
+      <ul>
+        <li>Data is stored in a secure cloud database (Supabase) with encryption at rest and in transit</li>
+        <li>API access requires authentication via Bearer token or API key</li>
+        <li>Local data on your device is stored in the browser's localStorage</li>
+        <li>Admin dashboard access requires additional role-based authorization</li>
+      </ul>
+
+      <h2>6. Data Retention</h2>
+      <p>Time and attendance records are retained for <strong>6 years</strong> in compliance with New York Labor Law and New Jersey record-keeping requirements. Records are not automatically deleted.</p>
+
+      <h2>7. Your Rights</h2>
+      <ul>
+        <li>Disable GPS tracking at any time via the Settings toggle</li>
+        <li>View your own shift history and reports within the app</li>
+        <li>Request access to your personal data from your supervisor or administrator</li>
+        <li>Request correction of inaccurate time entries (subject to approval workflow)</li>
+      </ul>
+
+      <h2>8. California Residents (CCPA/CPRA)</h2>
+      <p>If you are a California resident, GPS coordinates are classified as "sensitive personal information." You have the right to limit the use of this data. To exercise this right, disable the GPS toggle or contact your administrator.</p>
+
+      <h2>9. Changes to This Policy</h2>
+      <p>We may update this policy as needed. Material changes will be communicated through the application.</p>
+
+      <h2>10. Contact</h2>
+      <p>For questions about this policy or your data, contact your direct supervisor or the system administrator.</p>
+    </div>
+  </body>
+</html>

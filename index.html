@@ -193,6 +193,45 @@
 
     <div id="toast">Copied!</div>
 
+    <!-- Privacy Policy Footer (visible only in compliance mode) -->
+    <div id="privacy-link" class="privacy-footer hidden">
+      <a href="/privacy" target="_blank">Privacy Policy</a>
+    </div>
+
+    <!-- GPS Consent Overlay (compliance mode only) -->
+    <div id="gps-consent-overlay" class="consent-overlay hidden">
+      <div class="consent-box">
+        <h3>Location Data Collection Notice</h3>
+        <div class="consent-text">
+          <p>By enabling GPS, you agree that this application will collect your geographic coordinates (latitude and longitude) <strong>only at the time of clock in and clock out events</strong>.</p>
+          <p><strong>What we collect:</strong> GPS coordinates at the moment you clock in or out. No continuous or background tracking.</p>
+          <p><strong>Purpose:</strong> To verify shift location for timesheet accuracy and compliance.</p>
+          <p><strong>Who has access:</strong> Your employer's authorized supervisors and administrators.</p>
+          <p><strong>Your rights:</strong> You may disable GPS at any time via the Settings toggle. Previously collected data remains in the system per retention policy.</p>
+          <p><strong>Retention:</strong> Location data is retained for 6 years in accordance with New York and New Jersey labor record-keeping requirements.</p>
+        </div>
+        <div class="consent-actions">
+          <button id="gps-consent-decline" class="btn-sub">Decline</button>
+          <button id="gps-consent-accept" class="btn-main">I Agree</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1099 Contractor Disclaimer (compliance mode only) -->
+    <div id="disclaimer-overlay" class="consent-overlay hidden">
+      <div class="consent-box">
+        <h3>Independent Contractor Notice</h3>
+        <div class="consent-text">
+          <p>This time-tracking tool is provided <strong>for record-keeping purposes only</strong> and does not establish, modify, or imply an employment relationship.</p>
+          <p>As an independent contractor (1099), your use of this application is voluntary. Time entries are for mutual record-keeping and invoicing convenience.</p>
+          <p>Your classification as an independent contractor is determined by your service agreement, not by the use of this tool.</p>
+        </div>
+        <div class="consent-actions">
+          <button id="disclaimer-accept" class="btn-main" style="width:100%">I Understand</button>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

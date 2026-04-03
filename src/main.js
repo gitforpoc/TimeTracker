@@ -27,6 +27,11 @@ import {
   showToast,
   minsToHm,
 } from "./utils.js";
+import {
+  requireGpsConsent,
+  showContractorDisclaimer,
+  initComplianceUI,
+} from "./compliance.js";
 
 // --- DOM Elements ---
 const els = {
@@ -331,6 +336,15 @@ async function initAuth(retryCount = 0) {
           return s?.access_token || null;
         });
         sync.processQueue();
+
+        // 1099 disclaimer (compliance mode only, non-blocking)
+        client.from("tt_employee_settings")
+          .select("employment_type")
+          .eq("user_name", auth.name)
+          .maybeSingle()
+          .then(({ data }) => {
+            if (data?.employment_type) showContractorDisclaimer(data.employment_type);
+          });
       } else if (retryCount < 2) {
         // Session refresh may fail on cold start — retry after delay
         console.warn(`Auth session null, retrying (${retryCount + 1}/2)...`);
@@ -351,6 +365,7 @@ checkInputState();
 
 // Start SSO check (non-blocking)
 initAuth();
+initComplianceUI();
 
 // Sync resumes after auth (see initAuth). On reconnect — retry queue.
 window.addEventListener("online", () => sync.processQueue());
@@ -361,10 +376,19 @@ els.autoShareToggle.addEventListener("change", (e) => {
 });
 
 els.geoToggle.checked = store.geoEnabled;
-els.geoToggle.addEventListener("change", (e) => {
-  store.saveGeoEnabled(e.target.checked);
-  if (e.target.checked) requestLocation();
-  else lastCoords = null;
+els.geoToggle.addEventListener("change", async (e) => {
+  if (e.target.checked) {
+    const consented = await requireGpsConsent();
+    if (!consented) {
+      e.target.checked = false;
+      return;
+    }
+    store.saveGeoEnabled(true);
+    requestLocation();
+  } else {
+    store.saveGeoEnabled(false);
+    lastCoords = null;
+  }
 });
 
 els.username.addEventListener("input", checkInputState);

@@ -675,6 +675,76 @@ select {
   transform: translateY(100%);
 }
 
+/* Privacy Footer */
+.privacy-footer {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+}
+.privacy-footer a {
+  color: var(--gray);
+  font-size: 11px;
+  text-decoration: none;
+}
+.privacy-footer.hidden {
+  display: none;
+}
+
+/* Consent / Disclaimer Overlay */
+.consent-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(28, 28, 87, 0.8);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  opacity: 1;
+  transition: opacity 0.3s;
+}
+.consent-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+.consent-box {
+  background: var(--white);
+  width: 100%;
+  max-width: 420px;
+  max-height: 80vh;
+  border-radius: 20px;
+  padding: 28px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  overflow-y: auto;
+}
+.consent-box h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: var(--navy);
+}
+.consent-text {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #4b5563;
+  margin-bottom: 20px;
+}
+.consent-text p {
+  margin: 0 0 10px 0;
+}
+.consent-actions {
+  display: flex;
+  gap: 10px;
+}
+
 .sheet-handle {
   width: 40px;
   height: 5px;
