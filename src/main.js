@@ -298,8 +298,6 @@ async function addSpecialDay(type) {
   showToast(`${type} added`);
   incrementBadge();
 
-  if (store.autoShare) shareText(msg);
-
   sync.schedule(entryId, {
     name: store.userName,
     action: type,

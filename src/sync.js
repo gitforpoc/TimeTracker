@@ -54,9 +54,34 @@ class SyncManager {
     if (!response.ok) throw new Error(response.statusText);
   }
 
+  get pendingCount() {
+    return this.queue.length;
+  }
+
   _saveQueue() {
     localStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(this.queue));
+    this._notifyUI();
+  }
+
+  // Notify UI about queue changes (pending indicator)
+  _notifyUI() {
+    if (typeof document === "undefined") return;
+    const el = document.getElementById("sync-pending");
+    if (!el) return;
+    if (this.queue.length > 0) {
+      el.textContent = `${this.queue.length} pending`;
+      el.classList.remove("hidden");
+    } else {
+      el.classList.add("hidden");
+    }
   }
 }
 
 export const sync = new SyncManager();
+
+// Retry sync when app returns to foreground
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") sync.processQueue();
+  });
+}
