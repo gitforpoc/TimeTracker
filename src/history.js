@@ -327,7 +327,7 @@ export function renderHistoryList() {
       ${commentHtml}
       <div class="card-actions">
         ${editHtml}
-        ${!isFromServer || item._unsynced ? `<button class="comment-btn" data-id="${item.id}">💬</button>` : ""}
+        ${!isFromServer && !item._unsynced ? `<button class="comment-btn" data-id="${item.id}">💬</button>` : ""}
         ${!isFromServer || item._unsynced ? `<button class="del-btn" data-id="${item.id}">DELETE</button>` : ""}
       </div>
     `;
@@ -337,8 +337,10 @@ export function renderHistoryList() {
       const editBtn = div.querySelector(".edit-btn");
       if (editBtn) editBtn.addEventListener("click", () => editShift(item));
     }
-    if (!isFromServer || item._unsynced) {
+    if (!isFromServer && !item._unsynced) {
       div.querySelector(".comment-btn")?.addEventListener("click", () => addComment(item.id));
+    }
+    if (!isFromServer || item._unsynced) {
       div.querySelector(".del-btn")?.addEventListener("click", () => deleteItem(item.id));
     }
 
