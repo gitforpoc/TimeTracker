@@ -301,9 +301,13 @@ export function renderHistoryList() {
     const isFromServer = useServerData();
     const alreadyEdited = editedShiftIds.has(String(item.id));
     const isAdjusted = isFromServer && adjustedShiftIds.has(item.id);
+    const pending = sync.pendingIds;
+    const isInQueue = item._unsynced && (pending.has(item.id) || pending.has(item.id + "_out"));
     let editHtml = "";
     if (item._unsynced) {
-      editHtml = `<span class="sync-pending-badge">⏳ Syncing...</span>`;
+      editHtml = isInQueue
+        ? `<span class="sync-pending-badge">⏳ Syncing...</span>`
+        : `<span class="sync-pending-badge">⚠️ Not synced</span>`;
     } else if (isUserAuthenticated) {
       if (isAdjusted) {
         editHtml = `<span class="adjusted-badge">Adjusted</span>`;
@@ -322,19 +326,19 @@ export function renderHistoryList() {
       ${commentHtml}
       <div class="card-actions">
         ${editHtml}
-        ${!isFromServer ? `<button class="comment-btn" data-id="${item.id}">💬</button>` : ""}
-        ${!isFromServer ? `<button class="del-btn" data-id="${item.id}">DELETE</button>` : ""}
+        ${!isFromServer || item._unsynced ? `<button class="comment-btn" data-id="${item.id}">💬</button>` : ""}
+        ${!isFromServer || item._unsynced ? `<button class="del-btn" data-id="${item.id}">DELETE</button>` : ""}
       </div>
     `;
 
     // Event delegation
-    if (isUserAuthenticated && !alreadyEdited && !isAdjusted) {
+    if (isUserAuthenticated && !alreadyEdited && !isAdjusted && !item._unsynced) {
       const editBtn = div.querySelector(".edit-btn");
       if (editBtn) editBtn.addEventListener("click", () => editShift(item));
     }
-    if (!isFromServer) {
-      div.querySelector(".comment-btn").addEventListener("click", () => addComment(item.id));
-      div.querySelector(".del-btn").addEventListener("click", () => deleteItem(item.id));
+    if (!isFromServer || item._unsynced) {
+      div.querySelector(".comment-btn")?.addEventListener("click", () => addComment(item.id));
+      div.querySelector(".del-btn")?.addEventListener("click", () => deleteItem(item.id));
     }
 
     list.appendChild(div);
