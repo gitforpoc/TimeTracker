@@ -194,6 +194,8 @@ function getUnsyncedLocalEntries() {
   return store.data
     .filter((item) => {
       if (!item.in) return false;
+      // Skip deleted entries
+      if (item.comment && item.comment.startsWith("[DELETED]")) return false;
       // Entry is unsynced if no server shift matches its clock-in time (±2min)
       return !serverTimes.has(item.in) &&
         ![...serverTimes].some((t) => Math.abs(t - item.in) < 120000);
@@ -306,7 +308,7 @@ export function renderHistoryList() {
     if (item._unsynced) {
       editHtml = sync.pendingCount > 0
         ? `<span class="sync-pending-badge">⏳ Syncing...</span>`
-        : `<span class="sync-pending-badge">📱 Local</span>`;
+        : "";
     } else if (isUserAuthenticated) {
       if (isAdjusted) {
         editHtml = `<span class="adjusted-badge">Adjusted</span>`;
