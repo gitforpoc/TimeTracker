@@ -181,15 +181,21 @@ function useServerData() {
   return isUserAuthenticated && serverShifts !== null;
 }
 
-/** Get local entries that haven't synced to server yet */
+/** Get local entries missing from server data */
 function getUnsyncedLocalEntries() {
-  const pending = sync.pendingIds;
-  if (pending.size === 0) return [];
+  if (!serverShifts) return [];
+
+  // Collect server clock_in timestamps for dedup matching
+  const serverTimes = new Set(
+    serverShifts.map((s) => s.in).filter(Boolean)
+  );
 
   return store.data
     .filter((item) => {
-      // Check if this item's Clock In or Clock Out is still in sync queue
-      return pending.has(item.id) || pending.has(item.id + "_out");
+      if (!item.in) return false;
+      // Entry is unsynced if no server shift matches its clock-in time (±2min)
+      return !serverTimes.has(item.in) &&
+        ![...serverTimes].some((t) => Math.abs(t - item.in) < 120000);
     })
     .map((item) => ({ ...item, _unsynced: true }));
 }
