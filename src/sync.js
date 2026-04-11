@@ -14,10 +14,14 @@ class SyncManager {
   }
 
   schedule(id, payload) {
-    if (!this._getToken) return; // Guest mode — no sync
     this.queue.push({ id, payload });
+    // Cap queue size to prevent unbounded growth (e.g. guest mode)
+    if (this.queue.length > 200) this.queue.shift();
     this._saveQueue();
-    this.processQueue();
+    if (this._getToken) {
+      this.processQueue();
+    }
+    // No tokenGetter yet = queue persisted, will process after auth completes
   }
 
   async processQueue() {

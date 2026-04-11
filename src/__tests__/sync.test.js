@@ -44,11 +44,13 @@ describe("SyncManager", () => {
       expect(saved[0].payload.name).toBe("Yuri");
     });
 
-    it("does nothing in guest mode (no tokenGetter)", () => {
+    it("queues item even without tokenGetter (pre-auth or guest)", () => {
       sync.schedule("test-1", { name: "Guest", action: "Clock In" });
-      const saved = localStorage.getItem("tt_syncQueue");
-      expect(saved).toBeNull();
-      expect(sync.queue).toHaveLength(0);
+      const saved = JSON.parse(localStorage.getItem("tt_syncQueue"));
+      expect(saved).toHaveLength(1);
+      expect(sync.queue).toHaveLength(1);
+      // But does NOT attempt to send
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 
