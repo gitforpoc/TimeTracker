@@ -69,10 +69,21 @@ export async function checkAuth() {
 
     if (!profile?.name) return null;
 
+    logAppVisit(client, session.user.id);
     return { name: profile.name, userId: session.user.id };
   } catch {
     return null;
   }
+}
+
+/** Fire-and-forget: log visit to app_visits (max 1 per hour via DB dedup) */
+function logAppVisit(client, userId) {
+  if (!client) return;
+  client.from('app_visits').insert({
+    user_id: userId,
+    app_id: 'timetracker',
+    user_agent: navigator.userAgent,
+  }).then(() => {}).catch(() => {});
 }
 
 /**
