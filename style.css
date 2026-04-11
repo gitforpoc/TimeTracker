@@ -498,6 +498,11 @@ circle {
   color: #f59e0b;
   font-weight: 600;
 }
+.sync-pending-badge {
+  font-size: 11px;
+  color: #f59e0b;
+  font-weight: 600;
+}
 .del-btn {
   color: #ef4444;
   background: none;

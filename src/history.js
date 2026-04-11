@@ -181,6 +181,19 @@ function useServerData() {
   return isUserAuthenticated && serverShifts !== null;
 }
 
+/** Get local entries that haven't synced to server yet */
+function getUnsyncedLocalEntries() {
+  const pending = sync.pendingIds;
+  if (pending.size === 0) return [];
+
+  return store.data
+    .filter((item) => {
+      // Check if this item's Clock In or Clock Out is still in sync queue
+      return pending.has(item.id) || pending.has(item.id + "_out");
+    })
+    .map((item) => ({ ...item, _unsynced: true }));
+}
+
 // --- Reports ---
 function getReportItems() {
   const val = els.periodSelect.value;
@@ -204,7 +217,14 @@ function getReportItems() {
     endDate.setHours(23, 59, 59, 999);
   }
 
-  const source = useServerData() ? serverShifts : store.data;
+  let source;
+  if (useServerData()) {
+    // Merge server data with any local entries not yet synced
+    const unsynced = getUnsyncedLocalEntries();
+    source = [...serverShifts, ...unsynced];
+  } else {
+    source = store.data;
+  }
 
   return source
     .filter((i) => {
@@ -276,7 +296,9 @@ export function renderHistoryList() {
     const alreadyEdited = editedShiftIds.has(String(item.id));
     const isAdjusted = isFromServer && adjustedShiftIds.has(item.id);
     let editHtml = "";
-    if (isUserAuthenticated) {
+    if (item._unsynced) {
+      editHtml = `<span class="sync-pending-badge">⏳ Syncing...</span>`;
+    } else if (isUserAuthenticated) {
       if (isAdjusted) {
         editHtml = `<span class="adjusted-badge">Adjusted</span>`;
       } else if (alreadyEdited) {

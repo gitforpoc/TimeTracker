@@ -58,6 +58,11 @@ class SyncManager {
     return this.queue.length;
   }
 
+  /** Returns Set of client IDs that haven't synced yet */
+  get pendingIds() {
+    return new Set(this.queue.map((item) => item.id));
+  }
+
   _saveQueue() {
     localStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(this.queue));
     this._notifyUI();
