@@ -56,7 +56,7 @@ export async function openHistory() {
   els.historyView.classList.remove("hidden");
   window.history.pushState({ modal: "history" }, "History", "#history");
 
-  // SSO users: fetch fresh data from server
+  // SSO users: flush sync queue, then fetch fresh data from server
   if (isUserAuthenticated) {
     renderHistoryList(); // show local data first while loading
     renderReport();
@@ -65,6 +65,7 @@ export async function openHistory() {
     syncNote.className = "sync-loading";
     syncNote.textContent = "Syncing with server...";
     list.prepend(syncNote);
+    await sync.processQueue(); // flush pending items first
     await fetchServerData();
     syncNote.remove();
   }
@@ -301,13 +302,11 @@ export function renderHistoryList() {
     const isFromServer = useServerData();
     const alreadyEdited = editedShiftIds.has(String(item.id));
     const isAdjusted = isFromServer && adjustedShiftIds.has(item.id);
-    const pending = sync.pendingIds;
-    const isInQueue = item._unsynced && (pending.has(item.id) || pending.has(item.id + "_out"));
     let editHtml = "";
     if (item._unsynced) {
-      editHtml = isInQueue
+      editHtml = sync.pendingCount > 0
         ? `<span class="sync-pending-badge">⏳ Syncing...</span>`
-        : `<span class="sync-pending-badge">⚠️ Not synced</span>`;
+        : `<span class="sync-pending-badge">📱 Local</span>`;
     } else if (isUserAuthenticated) {
       if (isAdjusted) {
         editHtml = `<span class="adjusted-badge">Adjusted</span>`;
