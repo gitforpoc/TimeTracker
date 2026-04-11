@@ -376,10 +376,22 @@ async function deleteItem(id) {
   if (await showDialog("Delete entry?", false)) {
     const item = store.deleteEntry(id);
 
-    if (store.currentShiftId === id) {
+    if (String(store.currentShiftId) === String(id)) {
       store.status = "out";
       store.currentShiftId = null;
       store.save();
+      // Update main UI — import dynamically to avoid circular dep
+      import("./timer.js").then(({ stopTimerLoop }) => stopTimerLoop());
+      const mainBtn = document.getElementById("main-action-btn");
+      const statusLabel = document.getElementById("status-label");
+      if (mainBtn) {
+        mainBtn.innerText = "CLOCK IN";
+        mainBtn.classList.remove("clock-out");
+      }
+      if (statusLabel) {
+        statusLabel.innerText = "OFF DUTY";
+        statusLabel.style.color = "var(--gray)";
+      }
     }
 
     renderHistoryList();
