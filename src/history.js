@@ -310,7 +310,10 @@ export function renderHistoryList() {
         ? `<span class="sync-pending-badge">⏳ Syncing...</span>`
         : "";
     } else if (isUserAuthenticated) {
-      if (isAdjusted) {
+      const isOpenShift = item.type === "work" && !item.out;
+      if (isOpenShift) {
+        editHtml = `<span class="edited-badge">⏳ In progress</span>`;
+      } else if (isAdjusted) {
         editHtml = `<span class="adjusted-badge">Adjusted</span>`;
       } else if (alreadyEdited) {
         editHtml = `<span class="edited-badge">✏️ Edited</span>`;

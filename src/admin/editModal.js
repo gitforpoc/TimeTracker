@@ -43,6 +43,10 @@ export function setupEditListeners() {
 }
 
 function openEditModal(shift) {
+  if (shift.type === "work" && !shift.clock_out) {
+    showToast("Cannot edit an open shift — wait for Clock Out");
+    return;
+  }
   const modal = $("#edit-modal");
   modal.dataset.shiftId = shift.id;
 
