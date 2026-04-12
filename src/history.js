@@ -403,13 +403,19 @@ async function deleteItem(id) {
     renderReport();
 
     if (item) {
-      const newComment = `[DELETED] ${item.comment || ""}`.trim();
-      sync.schedule(Date.now(), {
-        type: "comment",
-        targetId: id,
-        comment: newComment,
-        name: store.userName,
-      });
+      // Only sync [DELETED] if the entry exists on server (has a matching server shift)
+      const isOnServer = serverShifts && serverShifts.some(
+        (s) => s.in && item.in && Math.abs(s.in - item.in) < 120000
+      );
+      if (isOnServer) {
+        const newComment = `[DELETED] ${item.comment || ""}`.trim();
+        sync.schedule(Date.now(), {
+          type: "comment",
+          targetId: id,
+          comment: newComment,
+          name: store.userName,
+        });
+      }
     }
   }
 }
