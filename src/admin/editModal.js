@@ -221,6 +221,20 @@ function toLocalDatetimeStr(iso) {
 }
 
 // --- Edit History Popover ---
+
+/** Format an ISO timestamp for edit history display.
+ *  Shows just time (e.g. "12:40pm") unless the date differs from shiftDate — then "12:40pm (Apr 16)". */
+function formatEditValue(iso, shiftDate) {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return esc(iso);
+  const timeStr = d.toLocaleString("en-US", { hour: "numeric", minute: "2-digit" });
+  const sameDate = shiftDate && d.toDateString() === new Date(shiftDate).toDateString();
+  if (sameDate || !shiftDate) return timeStr;
+  const dateStr = d.toLocaleString("en-US", { month: "short", day: "numeric" });
+  return `${timeStr} (${dateStr})`;
+}
+
 function showEditHistory(shiftId, anchor) {
   // Remove existing popover
   document.querySelectorAll(".edit-popover").forEach((p) => p.remove());
@@ -228,21 +242,30 @@ function showEditHistory(shiftId, anchor) {
   const edits = state.editsMap[shiftId];
   if (!edits || edits.length === 0) return;
 
+  const shift = state.shiftsData.find((s) => s.id === shiftId);
+  const shiftDate = shift?.clock_in;
+
   const popover = document.createElement("div");
   popover.className = "edit-popover";
+
+  const fieldLabels = { clock_in: "Clock In", clock_out: "Clock Out", type: "Type", comment: "Comment" };
 
   const rows = edits.map((e) => {
     const time = new Date(e.created_at).toLocaleString("en-US", {
       month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
     });
-    const isAdmin = e.edited_by_name !== state.shiftsData.find((s) => s.id === shiftId)?.user_name;
+    const isAdmin = e.edited_by_name !== shift?.user_name;
     const badge = isAdmin ? "supervisor" : "employee";
+    const label = fieldLabels[e.field_changed] || esc(e.field_changed);
+    const isTimeField = e.field_changed === "clock_in" || e.field_changed === "clock_out";
+    const oldDisplay = isTimeField ? formatEditValue(e.old_value, shiftDate) : (esc(e.old_value) || "—");
+    const newDisplay = isTimeField ? formatEditValue(e.new_value, shiftDate) : (esc(e.new_value) || "—");
     return `<div class="edit-entry">
       <div class="edit-meta">
         <span class="edit-badge edit-badge-${badge}">${esc(e.edited_by_name)}</span>
         <span class="edit-time">${time}</span>
       </div>
-      <div class="edit-detail">${esc(e.field_changed)}: ${esc(e.old_value) || "—"} → ${esc(e.new_value) || "—"}</div>
+      <div class="edit-detail">${label}: ${oldDisplay} → ${newDisplay}</div>
       ${e.reason ? `<div class="edit-reason">${esc(e.reason)}</div>` : ""}
     </div>`;
   }).join("");
