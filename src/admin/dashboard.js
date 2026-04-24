@@ -155,8 +155,13 @@ export async function loadDashboard() {
     alerts.push({ type: "warn", icon: "⚠️", text: `${esc(s.user_name)} worked ${h}h ${m}m on ${formatDateShort(s.clock_in)}` });
   });
 
-  // Open shifts
-  const openShifts = rows.filter((s) => s.type === "work" && !s.clock_out);
+  // Open shifts — only alert if older than 14 hours (likely forgot to clock out)
+  const now = new Date();
+  const openShifts = rows.filter((s) => {
+    if (s.type !== "work" || s.clock_out) return false;
+    const ageMinutes = (now - new Date(s.clock_in)) / 60000;
+    return ageMinutes > 840; // 14 hours
+  });
   openShifts.forEach((s) => {
     alerts.push({ type: "danger", icon: "🔴", text: `${esc(s.user_name)} has an open shift since ${formatDateShort(s.clock_in)} ${formatTimeShort(s.clock_in)}` });
   });
