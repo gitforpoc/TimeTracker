@@ -88,8 +88,16 @@ export default async function handler(req, res) {
     const update = {};
     const edits = [];
 
+    const isTimeField = (f) => f === "clock_in" || f === "clock_out";
+    const valuesEqual = (field, a, b) => {
+      if (isTimeField(field) && a && b) {
+        return Math.abs(new Date(a).getTime() - new Date(b).getTime()) < 60000; // within 1 min
+      }
+      return String(a ?? "") === String(b ?? "");
+    };
+
     for (const field of EDITABLE_FIELDS) {
-      if (changes[field] !== undefined && String(changes[field] ?? "") !== String(shift[field] ?? "")) {
+      if (changes[field] !== undefined && !valuesEqual(field, changes[field], shift[field])) {
         edits.push({
           shift_id: shiftId,
           field_changed: field,
