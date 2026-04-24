@@ -215,9 +215,22 @@ async function showEmployeeDetail(name) {
   // Show detail, hide list
   $("#emp-list").classList.add("hidden");
   $("#emp-detail").classList.remove("hidden");
+  window.history.pushState({ empDetail: name }, "", `#employee-${encodeURIComponent(name)}`);
 }
 
 export function hideEmployeeDetail() {
   $("#emp-detail").classList.add("hidden");
   $("#emp-list").classList.remove("hidden");
+  // Go back in history if we pushed a state
+  if (window.history.state?.empDetail) {
+    window.history.back();
+  }
 }
+
+// Handle browser back button / swipe
+window.addEventListener("popstate", (e) => {
+  if ($("#emp-detail") && !$("#emp-detail").classList.contains("hidden")) {
+    $("#emp-detail").classList.add("hidden");
+    $("#emp-list").classList.remove("hidden");
+  }
+});
