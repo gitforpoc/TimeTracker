@@ -15,6 +15,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   </head>
   <body>
+    <script>
+      // Prevent flash: apply theme before first paint
+      if (localStorage.getItem("tt_admin_theme") === "light") document.body.classList.add("light");
+    </script>
     <!-- Auth gate: shown while checking access -->
     <div id="auth-gate">
       <div class="gate-message">Checking access...</div>
@@ -46,11 +50,11 @@
     <div id="dashboard" class="hidden">
       <header class="admin-header">
         <div class="header-left">
-          <a href="/" class="back-link">← TT</a>
           <h1>TIME<span class="pink">TRACKER</span> <span class="admin-badge">ADMIN</span></h1>
         </div>
         <div class="header-right">
           <span id="admin-name"></span>
+          <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">🌙</button>
         </div>
       </header>
 
@@ -78,7 +82,7 @@
           <div id="dash-bars" class="dash-bars"></div>
         </div>
         <div class="dash-section">
-          <h3 class="dash-section-title">Daily Activity (last 14 days)</h3>
+          <h3 class="dash-section-title">Daily Activity</h3>
           <div id="dash-daily" class="dash-daily"></div>
         </div>
         <div class="dash-section">

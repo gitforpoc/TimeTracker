@@ -335,6 +335,19 @@ async function initAuth(retryCount = 0) {
         });
         sync.processQueue();
 
+        // Show admin link for supervisors/admins (non-blocking)
+        client.from("user_access")
+          .select("role")
+          .eq("user_id", session.user.id)
+          .eq("app_id", "timetracker")
+          .single()
+          .then(({ data }) => {
+            if (data && ["admin", "supervisor"].includes(data.role)) {
+              const link = document.getElementById("admin-link");
+              if (link) link.classList.remove("hidden");
+            }
+          });
+
         // 1099 disclaimer (compliance mode only, non-blocking)
         client.from("tt_employee_settings")
           .select("employment_type")

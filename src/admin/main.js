@@ -189,6 +189,22 @@ function setupKeyboard() {
   });
 }
 
+// --- Theme ---
+function setupTheme() {
+  const btn = $("#theme-toggle");
+  if (!btn) return;
+  const update = () => {
+    btn.textContent = document.body.classList.contains("light") ? "🌑" : "🌙";
+  };
+  update();
+  btn.addEventListener("click", () => {
+    document.body.classList.toggle("light");
+    localStorage.setItem("tt_admin_theme", document.body.classList.contains("light") ? "light" : "dark");
+    update();
+  });
+}
+
 // --- Start ---
 setupEditListeners();
+setupTheme();
 init();

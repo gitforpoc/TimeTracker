@@ -23,15 +23,18 @@
     <div class="app">
       <header>
         <div class="logo">TIME<span class="pink-text">TRACKER</span></div>
-        <div class="history-wrapper">
-          <button id="history-btn" class="icon-btn" aria-label="Open history">
-            <img
-              src="iconlogs2.png"
-              alt="History"
-              style="width: 32px; height: 32px"
-            />
-          </button>
-          <span id="history-badge" class="badge hidden">0</span>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <a id="admin-link" href="/admin" class="admin-link hidden">Admin</a>
+          <div class="history-wrapper">
+            <button id="history-btn" class="icon-btn" aria-label="Open history">
+              <img
+                src="iconlogs2.png"
+                alt="History"
+                style="width: 32px; height: 32px"
+              />
+            </button>
+            <span id="history-badge" class="badge hidden">0</span>
+          </div>
         </div>
       </header>
 

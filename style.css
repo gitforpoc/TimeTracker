@@ -47,6 +47,19 @@ header {
   color: var(--pink);
 }
 
+.admin-link {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--white);
+  background: var(--navy);
+  padding: 5px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  letter-spacing: 0.5px;
+}
+.admin-link.hidden {
+  display: none;
+}
 .history-wrapper {
   position: relative;
 }
