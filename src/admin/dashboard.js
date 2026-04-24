@@ -116,29 +116,41 @@ export async function loadDashboard() {
     }).join("");
   }
 
-  // Daily activity (last 14 days from today, not from period)
+  // Daily activity — matches selected period
   const dailyEl = $("#dash-daily");
-  const today = new Date();
   const days = [];
-  for (let i = 13; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    days.push(d);
+  const cur = new Date(state.dashPeriod.start);
+  const periodEnd = new Date(state.dashPeriod.end);
+  while (cur <= periodEnd) {
+    days.push(new Date(cur));
+    cur.setDate(cur.getDate() + 1);
   }
-  const dayCounts = {};
+
+  // Aggregate shifts and hours per day
+  const dayStats = {};
   rows.forEach((s) => {
     const key = new Date(s.clock_in).toDateString();
-    dayCounts[key] = (dayCounts[key] || 0) + 1;
+    if (!dayStats[key]) dayStats[key] = { count: 0, minutes: 0, names: [] };
+    dayStats[key].count++;
+    if (s.type === "work") dayStats[key].minutes += s.duration_minutes || 0;
+    if (!dayStats[key].names.includes(s.user_name)) dayStats[key].names.push(s.user_name);
   });
-  const maxCount = Math.max(1, ...Object.values(dayCounts));
+  const maxCount = Math.max(1, ...Object.values(dayStats).map((d) => d.count));
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
   dailyEl.innerHTML = days.map((d) => {
     const key = d.toDateString();
-    const count = dayCounts[key] || 0;
-    const hPct = count > 0 ? Math.max(8, Math.round((count / maxCount) * 100)) : 0;
+    const stat = dayStats[key] || { count: 0, minutes: 0, names: [] };
+    const hPct = stat.count > 0 ? Math.max(8, Math.round((stat.count / maxCount) * 100)) : 0;
     const label = `${d.getMonth() + 1}/${d.getDate()}`;
+    const dayName = dayNames[d.getDay()];
+    const h = Math.floor(stat.minutes / 60);
+    const m = stat.minutes % 60;
+    const tooltip = stat.count > 0
+      ? `${dayName} ${label}: ${stat.count} shifts, ${h}h ${m}m\n${stat.names.join(", ")}`
+      : `${dayName} ${label}: no shifts`;
     return `<div class="dash-daily-bar">
-      <div class="dash-daily-fill" style="height:${hPct}%" title="${count} shifts"></div>
+      <div class="dash-daily-fill" style="height:${hPct}%" title="${tooltip}"></div>
       <span class="dash-daily-label">${label}</span>
     </div>`;
   }).join("");
