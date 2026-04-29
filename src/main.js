@@ -181,6 +181,10 @@ function getMetaFields() {
 // --- Core Actions ---
 async function performClockAction(action) {
   closeActionSheet();
+  // Show immediate feedback while GPS resolves
+  els.mainBtn.classList.add("pending");
+  els.mainBtn.innerText = action === "in" ? "STARTING..." : "ENDING...";
+  els.mainBtn.disabled = true;
   // Wait for GPS if enabled (max 5s timeout built into requestLocation)
   if (store.geoEnabled) await requestLocation();
   const now = new Date();
@@ -239,6 +243,7 @@ async function performClockAction(action) {
     msg = `${timeStr} ${store.userName} - clock out`;
   }
 
+  els.mainBtn.disabled = false;
   renderUI();
   copyToClipboard(msg);
   els.previewText.innerText = msg;
