@@ -1969,6 +1969,69 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   font-weight: 600;
 }
 
+/* Edit history table */
+.emp-edits-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.emp-edits-table th,
+.emp-edits-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.emp-edits-table th {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+
+.emp-edits-table .edit-old {
+  color: var(--gray);
+  text-decoration: line-through;
+  font-family: var(--mono);
+}
+
+.emp-edits-table .edit-new {
+  color: var(--text);
+  font-weight: 600;
+  font-family: var(--mono);
+}
+
+.emp-edits-table .edit-reason {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-style: italic;
+  max-width: 280px;
+}
+
+.dash-alert-none-inline {
+  color: var(--gray);
+}
+
+@media (max-width: 768px) {
+  .emp-edits-table {
+    font-size: 11px;
+  }
+  .emp-edits-table th,
+  .emp-edits-table td {
+    padding: 6px 6px;
+  }
+  .emp-edits-table .edit-reason {
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .emp-card:hover {
   border-color: var(--border-active);
   transform: translateX(4px);

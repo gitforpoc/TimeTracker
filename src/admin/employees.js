@@ -8,6 +8,65 @@ function minsToHm(min) {
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
 }
 
+const FIELD_LABELS = {
+  clock_in: "Clock In",
+  clock_out: "Clock Out",
+  duration_minutes: "Duration",
+  type: "Type",
+  comment: "Comment",
+};
+
+function formatEditValue(field, value) {
+  if (value == null || value === "") return "—";
+  if (field === "clock_in" || field === "clock_out") {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return esc(String(value));
+    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  }
+  if (field === "duration_minutes") {
+    const n = Number(value);
+    return Number.isFinite(n) ? minsToHm(n) : esc(String(value));
+  }
+  return esc(String(value));
+}
+
+function renderEditsList(edits, shiftsById) {
+  const host = $("#emp-detail-edits");
+  if (!edits.length) {
+    host.innerHTML = '<div class="dash-alert-none">No edits in this period</div>';
+    return;
+  }
+  let html = `<table class="emp-edits-table"><thead><tr>
+    <th>When</th>
+    <th>Shift</th>
+    <th>Field</th>
+    <th>Old → New</th>
+    <th>By</th>
+    <th>Reason</th>
+  </tr></thead><tbody>`;
+  for (const e of edits) {
+    const editedAt = new Date(e.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+    const shift = shiftsById[e.shift_id];
+    const shiftLabel = shift
+      ? new Date(shift.clock_in).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+      : `#${e.shift_id}`;
+    const fieldLabel = FIELD_LABELS[e.field_changed] || e.field_changed;
+    const oldFmt = formatEditValue(e.field_changed, e.old_value);
+    const newFmt = formatEditValue(e.field_changed, e.new_value);
+    const reason = e.reason ? esc(e.reason) : '<span class="dash-alert-none-inline">—</span>';
+    html += `<tr>
+      <td>${editedAt}</td>
+      <td>${shiftLabel}</td>
+      <td>${esc(fieldLabel)}</td>
+      <td><span class="edit-old">${oldFmt}</span> → <span class="edit-new">${newFmt}</span></td>
+      <td>${esc(e.edited_by_name || "—")}</td>
+      <td class="edit-reason">${reason}</td>
+    </tr>`;
+  }
+  html += "</tbody></table>";
+  host.innerHTML = html;
+}
+
 // Compute reg/OT split for an employee across the visible period.
 // Returns null if employee is not active W2 (OT only applies to active W2 employees).
 function computeOvertimeFor(name, shifts, employeeSettings, periodStart, periodEnd) {
@@ -176,23 +235,32 @@ async function showEmployeeDetail(name) {
   const startISO = formatDateISO(state.dashPeriod.start);
   const endISO = formatDateISO(state.dashPeriod.end);
 
-  const [shiftsResult, editsResult] = await Promise.all([
-    state.supabase
-      .from("tt_shifts")
-      .select("id, clock_in, clock_out, duration_minutes, type, comment")
-      .eq("user_name", name)
-      .gte("clock_in", `${startISO}T00:00:00`)
-      .lte("clock_in", `${endISO}T23:59:59`)
-      .order("clock_in", { ascending: true }),
-    state.supabase
-      .from("tt_edits")
-      .select("shift_id")
-      .gte("created_at", `${startISO}T00:00:00`)
-      .lte("created_at", `${endISO}T23:59:59`),
-  ]);
+  // Step 1: fetch this employee's shifts in the period
+  const { data: shiftsData } = await state.supabase
+    .from("tt_shifts")
+    .select("id, clock_in, clock_out, duration_minutes, type, comment")
+    .eq("user_name", name)
+    .gte("clock_in", `${startISO}T00:00:00`)
+    .lte("clock_in", `${endISO}T23:59:59`)
+    .order("clock_in", { ascending: true });
 
-  const shifts = shiftsResult.data || [];
-  const editsCount = editsResult.data ? editsResult.data.length : 0;
+  const shifts = shiftsData || [];
+
+  // Step 2: fetch edits filtered to ONLY this employee's shifts (not all edits in period)
+  const shiftIds = shifts.map((s) => s.id);
+  let editsList = [];
+  if (shiftIds.length > 0) {
+    const { data: editsData } = await state.supabase
+      .from("tt_edits")
+      .select("id, shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
+      .in("shift_id", shiftIds)
+      .order("created_at", { ascending: false });
+    editsList = editsData || [];
+  }
+  const editsCount = editsList.length;
+  // Make available to the renderer below
+  state.employeeEditsList = editsList;
+  state.employeeShiftsByIdForEdits = Object.fromEntries(shifts.map((s) => [s.id, s]));
 
   // Summary
   const workShifts = shifts.filter((s) => s.type === "work");
@@ -228,13 +296,38 @@ async function showEmployeeDetail(name) {
   $("#emp-detail-name").innerHTML = `${esc(name)}${empTypeBadge}`;
   $("#emp-detail-period").textContent = state.dashPeriod.label || "";
 
+  // Edits card: clickable when count > 0 — toggles the edit-history section below
+  const editsCardClass = editsCount > 0 ? "dash-card dash-card-action" : "dash-card";
+  const editsCardId = editsCount > 0 ? ' id="emp-detail-edits-toggle"' : "";
+  const editsHint = editsCount > 0 ? '<div class="dash-card-sub">Click to view</div>' : "";
+
   $("#emp-detail-cards").innerHTML = `
     <div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${totalH}h ${totalM}m</div></div>
     <div class="dash-card"><div class="dash-card-label">Shifts</div><div class="dash-card-value accent-pink">${shifts.length}</div></div>
     <div class="dash-card"><div class="dash-card-label">Avg Shift</div><div class="dash-card-value accent-green">${avg}h</div></div>
     ${otCard}
-    <div class="dash-card"><div class="dash-card-label">Edits</div><div class="dash-card-value accent-yellow">${editsCount}</div></div>
+    <div class="${editsCardClass}"${editsCardId}><div class="dash-card-label">Edits</div><div class="dash-card-value accent-yellow">${editsCount}</div>${editsHint}</div>
   `;
+
+  // Wire toggle for edits section
+  if (editsCount > 0) {
+    const toggleBtn = $("#emp-detail-edits-toggle");
+    if (toggleBtn) {
+      toggleBtn.addEventListener("click", () => {
+        const wrap = $("#emp-detail-edits-wrap");
+        const isHidden = wrap.style.display === "none" || wrap.style.display === "";
+        if (isHidden) {
+          renderEditsList(editsList, state.employeeShiftsByIdForEdits);
+          wrap.style.display = "block";
+          wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        } else {
+          wrap.style.display = "none";
+        }
+      });
+    }
+  } else {
+    $("#emp-detail-edits-wrap").style.display = "none";
+  }
 
   // Weekly breakdown — only meaningful when period spans 2+ workweeks
   const weekWrap = $("#emp-detail-week-wrap");
