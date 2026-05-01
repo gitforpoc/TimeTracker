@@ -2242,23 +2242,53 @@ tr.row-overtime td {
     font-size: 11px;
   }
 
+  /* Mobile employee card: 3 logical rows via flex-wrap.
+     Row 1: name + type badge (full width, edit button floats absolute right)
+     Row 2: stats (Hours, OT, Shifts, Avg) flow horizontally
+     Row 3: progress bar full-width */
   .emp-card {
-    grid-template-columns: 1fr;
-    gap: 8px;
+    flex-wrap: wrap;
+    position: relative;
+    padding: 12px 14px;
+    padding-right: 50px; /* room for absolutely-positioned edit button */
+    gap: 8px 14px;
   }
 
-  .emp-card-name {
-    font-size: 13px;
+  .emp-card .emp-card-name {
+    flex: 1 0 100%;
+    font-size: 14px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .emp-stat {
+  .emp-card .emp-edit-btn {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    transform: translateY(-50%);
+  }
+
+  .emp-card .emp-stat,
+  .emp-card .emp-stat-ot {
     display: inline-flex;
-    gap: 6px;
     align-items: baseline;
+    gap: 5px;
+    text-align: left;
   }
 
-  .emp-progress-wrap {
-    width: 100%;
+  .emp-card .emp-stat-value {
+    font-size: 14px;
+  }
+
+  .emp-card .emp-stat-label {
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+
+  .emp-card .emp-progress-wrap {
+    flex: 1 0 100%;
   }
 
   .tabs {
