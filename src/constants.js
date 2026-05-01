@@ -40,5 +40,11 @@ export const PAY_PERIOD_LABELS = {
 // Period: Thu → Wed, 14 days. Mathematically equivalent to any Thursday offset by a multiple of 14 days.
 export const BI_WEEKLY_ANCHOR = "2026-04-30";
 
+// Workweek for FLSA OT calculation. FLSA allows ANY 7-consecutive-day window — employer chooses.
+// We align with the bi-weekly pay period (Thursday) so pay period and workweek match.
+// Day numbering: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat.
+// To switch to traditional Mon-Sun, change to 1.
+export const WORKWEEK_START_DAY = 4; // Thursday
+
 // FLSA / NY / NJ standard: 40h/week threshold for overtime (W2 only).
 export const DEFAULT_OVERTIME_THRESHOLD = 40;

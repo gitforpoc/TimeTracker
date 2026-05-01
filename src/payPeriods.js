@@ -3,12 +3,13 @@
 //
 // Period types:
 //   - semi_monthly: 1-15, 16-end of month
-//   - bi_weekly:    14-day windows anchored to BI_WEEKLY_ANCHOR (Thursday) — period runs Thu → Wed
-//   - weekly:       Monday → Sunday (FLSA standard workweek)
+//   - bi_weekly:    14-day windows anchored to BI_WEEKLY_ANCHOR — period runs anchor-day → anchor-day+13
+//   - weekly:       7-day window starting on WORKWEEK_START_DAY (configurable; default Thursday)
 //
+// Workweek: FLSA-compliant fixed 168-hour period. Configurable via WORKWEEK_START_DAY.
 // Overtime: only `work` shifts count toward the weekly threshold (default 40). Paid Off / Day Off do not.
 
-import { BI_WEEKLY_ANCHOR, DEFAULT_OVERTIME_THRESHOLD } from "./constants.js";
+import { BI_WEEKLY_ANCHOR, DEFAULT_OVERTIME_THRESHOLD, WORKWEEK_START_DAY } from "./constants.js";
 
 const MS_PER_DAY = 86400000;
 
@@ -45,12 +46,13 @@ function parseAnchor(iso) {
   return new Date(y, m - 1, d);
 }
 
-// --- workweek (Monday → Sunday, FLSA standard) ---
+// --- workweek (configurable start day, default Thursday to align with bi-weekly pay period) ---
 
 export function getWorkWeekStart(date) {
   const d = startOfDay(date);
   const dow = d.getDay(); // 0 = Sun, 1 = Mon ... 6 = Sat
-  const daysBack = dow === 0 ? 6 : dow - 1;
+  // Days to step back to reach the workweek-start day-of-week.
+  const daysBack = (dow - WORKWEEK_START_DAY + 7) % 7;
   return addDays(d, -daysBack);
 }
 

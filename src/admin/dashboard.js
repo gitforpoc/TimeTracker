@@ -373,7 +373,7 @@ export async function loadDashboard() {
   const alertsEl = $("#dash-alerts");
   const alerts = [];
 
-  // OT alerts — use the dedicated current-week query so we capture the FULL Mon-Sun
+  // OT alerts — use the dedicated current-week query so we capture the FULL Thu-Wed
   // workweek regardless of the visible period. Alerts are about today's reality, not history.
   const now = new Date();
   for (const s of settings) {

@@ -17,66 +17,78 @@ import {
 // Date constructors with local components, so the Date objects under test are in the test runner's
 // local zone — same as production browser behavior.
 
-describe("workweek helpers", () => {
-  it("Monday returns itself as week start", () => {
-    const mon = new Date(2026, 3, 27); // Mon Apr 27 2026
-    const start = getWorkWeekStart(mon);
-    expect(start.getDay()).toBe(1);
-    expect(start.toDateString()).toBe(mon.toDateString());
+describe("workweek helpers (Thu-Wed, aligned with bi-weekly pay period)", () => {
+  it("Thursday returns itself as week start", () => {
+    const thu = new Date(2026, 3, 30); // Thu Apr 30 2026
+    const start = getWorkWeekStart(thu);
+    expect(start.getDay()).toBe(4);
+    expect(start.toDateString()).toBe(thu.toDateString());
   });
 
-  it("Sunday returns previous Monday as week start", () => {
-    const sun = new Date(2026, 4, 3); // Sun May 3 2026
-    const start = getWorkWeekStart(sun);
-    expect(start.getDay()).toBe(1);
-    expect(start.getDate()).toBe(27);
+  it("Wednesday returns same-week Thursday (6 days back)", () => {
+    const wed = new Date(2026, 4, 6); // Wed May 6 2026
+    const start = getWorkWeekStart(wed);
+    expect(start.getDay()).toBe(4);
+    expect(start.getDate()).toBe(30);
+    expect(start.getMonth()).toBe(3); // April — Thu Apr 30
+  });
+
+  it("Friday returns same-week Thursday", () => {
+    const fri = new Date(2026, 4, 1); // Fri May 1 2026
+    const start = getWorkWeekStart(fri);
+    expect(start.getDay()).toBe(4);
+    expect(start.getDate()).toBe(30);
     expect(start.getMonth()).toBe(3); // April
   });
 
-  it("Wednesday returns same-week Monday", () => {
-    const wed = new Date(2026, 3, 29); // Wed Apr 29 2026
-    const start = getWorkWeekStart(wed);
-    expect(start.getDate()).toBe(27);
+  it("Sunday returns previous Thursday as week start", () => {
+    const sun = new Date(2026, 4, 3); // Sun May 3 2026
+    const start = getWorkWeekStart(sun);
+    expect(start.getDay()).toBe(4);
+    expect(start.getDate()).toBe(30); // Apr 30
   });
 
-  it("week end is Sunday 23:59:59", () => {
-    const wed = new Date(2026, 3, 29);
-    const end = getWorkWeekEnd(wed);
-    expect(end.getDay()).toBe(0); // Sunday
+  it("week end is Wednesday 23:59:59", () => {
+    const fri = new Date(2026, 4, 1);
+    const end = getWorkWeekEnd(fri);
+    expect(end.getDay()).toBe(3); // Wednesday
     expect(end.getHours()).toBe(23);
     expect(end.getMinutes()).toBe(59);
     expect(end.getSeconds()).toBe(59);
   });
 
-  it("week key is YYYY-MM-DD of Monday", () => {
-    expect(getWeekKey(new Date(2026, 3, 29))).toBe("2026-04-27");
-    expect(getWeekKey(new Date(2026, 4, 3))).toBe("2026-04-27"); // Sun belongs to prev Mon
+  it("week key is YYYY-MM-DD of Thursday (start of week)", () => {
+    expect(getWeekKey(new Date(2026, 4, 1))).toBe("2026-04-30"); // Fri → Thu Apr 30
+    expect(getWeekKey(new Date(2026, 4, 3))).toBe("2026-04-30"); // Sun belongs to prev Thu
+    expect(getWeekKey(new Date(2026, 4, 6))).toBe("2026-04-30"); // Wed = last day of week
+    expect(getWeekKey(new Date(2026, 4, 7))).toBe("2026-05-07"); // Thu = next week starts
   });
 });
 
-describe("overtime calculation", () => {
+describe("overtime calculation (Thu-Wed workweek)", () => {
   it("zero hours = zero OT", () => {
     expect(totalOvertimeMinutes([])).toBe(0);
   });
 
   it("under threshold = no OT", () => {
+    // Workweek Apr 30 (Thu) → May 6 (Wed). Five 8h shifts = 40h exactly.
     const shifts = [
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 8 * 60, type: "work" }, // Mon
-      { clock_in: new Date(2026, 3, 28), duration_minutes: 8 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 29), duration_minutes: 8 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 30), duration_minutes: 8 * 60, type: "work" },
-      { clock_in: new Date(2026, 4, 1), duration_minutes: 8 * 60, type: "work" }, // Fri
+      { clock_in: new Date(2026, 3, 30), duration_minutes: 8 * 60, type: "work" }, // Thu
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 8 * 60, type: "work" },  // Fri
+      { clock_in: new Date(2026, 4, 4), duration_minutes: 8 * 60, type: "work" },  // Mon
+      { clock_in: new Date(2026, 4, 5), duration_minutes: 8 * 60, type: "work" },  // Tue
+      { clock_in: new Date(2026, 4, 6), duration_minutes: 8 * 60, type: "work" },  // Wed
     ];
-    expect(totalOvertimeMinutes(shifts)).toBe(0); // exactly 40h
+    expect(totalOvertimeMinutes(shifts)).toBe(0);
   });
 
   it("hours over threshold counted as OT", () => {
     const shifts = [
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 9 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 28), duration_minutes: 9 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 29), duration_minutes: 9 * 60, type: "work" },
       { clock_in: new Date(2026, 3, 30), duration_minutes: 9 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 1), duration_minutes: 9 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 4), duration_minutes: 9 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 5), duration_minutes: 9 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 6), duration_minutes: 9 * 60, type: "work" },
     ];
     // 45h - 40h = 5h OT = 300 min
     expect(totalOvertimeMinutes(shifts)).toBe(300);
@@ -84,11 +96,11 @@ describe("overtime calculation", () => {
 
   it("paid_off and day_off shifts do NOT count toward OT", () => {
     const shifts = [
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 480, type: "paid_off" }, // Mon Paid Off
-      { clock_in: new Date(2026, 3, 28), duration_minutes: 10 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 29), duration_minutes: 10 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 30), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 3, 30), duration_minutes: 480, type: "paid_off" }, // Thu Paid Off
       { clock_in: new Date(2026, 4, 1), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 4), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 5), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 6), duration_minutes: 10 * 60, type: "work" },
     ];
     // 40h work + 8h paid_off — no OT (work alone = 40h)
     expect(totalOvertimeMinutes(shifts)).toBe(0);
@@ -96,16 +108,16 @@ describe("overtime calculation", () => {
 
   it("OT calculated separately per workweek", () => {
     const shifts = [
-      // Week 1: Mon Apr 27 - Sun May 3 — 50h work
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 10 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 28), duration_minutes: 10 * 60, type: "work" },
-      { clock_in: new Date(2026, 3, 29), duration_minutes: 10 * 60, type: "work" },
+      // Week 1: Thu Apr 30 - Wed May 6 — 50h work
       { clock_in: new Date(2026, 3, 30), duration_minutes: 10 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 1), duration_minutes: 10 * 60, type: "work" },
-      // Week 2: Mon May 4 - Sun May 10 — 30h, no OT
       { clock_in: new Date(2026, 4, 4), duration_minutes: 10 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 5), duration_minutes: 10 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 6), duration_minutes: 10 * 60, type: "work" },
+      // Week 2: Thu May 7 - Wed May 13 — 30h, no OT
+      { clock_in: new Date(2026, 4, 7), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 8), duration_minutes: 10 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 11), duration_minutes: 10 * 60, type: "work" },
     ];
     const buckets = calculateWeeklyOvertime(shifts);
     expect(buckets).toHaveLength(2);
@@ -115,22 +127,22 @@ describe("overtime calculation", () => {
 
   it("custom threshold respected", () => {
     const shifts = [
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 36 * 60, type: "work" },
+      { clock_in: new Date(2026, 3, 30), duration_minutes: 36 * 60, type: "work" },
     ];
     expect(totalOvertimeMinutes(shifts, 35)).toBe(60); // 36 - 35 = 1h OT
     expect(totalOvertimeMinutes(shifts, 40)).toBe(0);
   });
 
-  it("groupShiftsByWeek uses Monday as the bucket key", () => {
+  it("groupShiftsByWeek uses Thursday as the bucket key", () => {
     const shifts = [
-      { clock_in: new Date(2026, 3, 27), duration_minutes: 60, type: "work" }, // Mon
-      { clock_in: new Date(2026, 4, 3), duration_minutes: 60, type: "work" }, // Sun (same week)
-      { clock_in: new Date(2026, 4, 4), duration_minutes: 60, type: "work" }, // Mon (next week)
+      { clock_in: new Date(2026, 3, 30), duration_minutes: 60, type: "work" }, // Thu
+      { clock_in: new Date(2026, 4, 6), duration_minutes: 60, type: "work" },  // Wed (same week)
+      { clock_in: new Date(2026, 4, 7), duration_minutes: 60, type: "work" },  // Thu (next week)
     ];
     const groups = groupShiftsByWeek(shifts);
     expect(groups.size).toBe(2);
-    expect(groups.get("2026-04-27")).toHaveLength(2);
-    expect(groups.get("2026-05-04")).toHaveLength(1);
+    expect(groups.get("2026-04-30")).toHaveLength(2);
+    expect(groups.get("2026-05-07")).toHaveLength(1);
   });
 });
 
@@ -196,11 +208,11 @@ describe("bi-weekly period (anchor 2026-04-30 Thu)", () => {
 });
 
 describe("weekly period", () => {
-  it("Wed returns Mon-Sun of that week", () => {
-    const p = getWeeklyPeriod(new Date(2026, 3, 29)); // Wed Apr 29
-    expect(p.start.getDay()).toBe(1); // Mon
-    expect(p.end.getDay()).toBe(0); // Sun
-    expect(p.start.getDate()).toBe(27);
+  it("Friday returns Thu-Wed of that week", () => {
+    const p = getWeeklyPeriod(new Date(2026, 4, 1)); // Fri May 1
+    expect(p.start.getDay()).toBe(4); // Thursday
+    expect(p.end.getDay()).toBe(3); // Wednesday
+    expect(p.start.getDate()).toBe(30); // Thu Apr 30
   });
 });
 
