@@ -2,6 +2,10 @@ import { resolve } from "path";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Note: @mpoc/auth is consumed as a local package via "file:../shared-auth"
+// in package.json. Vite resolves it through node_modules naturally — no alias needed.
+// See shared-auth/README.md and shared-docs/AUTH-UNIFICATION-PLAN.md.
+
 export default defineConfig({
   build: {
     rollupOptions: {
