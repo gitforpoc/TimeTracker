@@ -8,7 +8,7 @@ import { setupEditListeners, closeEditModal, closeConfirmModal } from "./editMod
 import { initMap } from "./map.js";
 import { loadZones } from "./map.js";
 import { setupDashboardNav, initDashPeriod, loadDashboard } from "./dashboard.js";
-import { loadEmployeesTab } from "./employees.js";
+import { loadEmployeesTab, setupEmployeeEditListeners } from "./employees.js";
 
 // --- Session state ---
 function persistState() {
@@ -80,9 +80,13 @@ async function init() {
   }
 
   state.supabase = getSupabaseClient();
+  state.adminRole = auth.role; // 'admin' or 'supervisor' — gates pay-rate visibility
   const { data: { session } } = await state.supabase.auth.getSession();
   state.authToken = session?.access_token;
   $("#admin-name").textContent = auth.name;
+  if (auth.role) {
+    document.body.dataset.role = auth.role;
+  }
   $("#auth-gate").classList.add("hidden");
   $("#dashboard").classList.remove("hidden");
 
@@ -156,6 +160,13 @@ function setupTabs() {
 
       persistState();
 
+      // Show global period bar only on tabs that use it
+      const periodBar = $("#global-period-bar");
+      if (periodBar) {
+        const usesPeriod = state.currentTab === "dashboard" || state.currentTab === "employees";
+        periodBar.style.display = usesPeriod ? "" : "none";
+      }
+
       // Auto-load on tab switch
       if (state.currentTab === "dashboard") loadDashboard();
       if (state.currentTab === "employees") loadEmployeesTab();
@@ -173,6 +184,8 @@ function setupKeyboard() {
         closeConfirmModal();
       } else if (!$("#edit-modal").classList.contains("hidden")) {
         closeEditModal();
+      } else if (!$("#emp-edit-modal").classList.contains("hidden")) {
+        $("#emp-edit-cancel").click();
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -183,6 +196,11 @@ function setupKeyboard() {
         if (!$("#edit-save").disabled) {
           e.preventDefault();
           $("#edit-save").click();
+        }
+      } else if (!$("#emp-edit-modal").classList.contains("hidden")) {
+        if (!$("#emp-edit-save").disabled) {
+          e.preventDefault();
+          $("#emp-edit-save").click();
         }
       }
     }
@@ -206,5 +224,6 @@ function setupTheme() {
 
 // --- Start ---
 setupEditListeners();
+setupEmployeeEditListeners();
 setupTheme();
 init();

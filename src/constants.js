@@ -23,3 +23,22 @@ export const STORAGE_KEYS = {
   GPS_CONSENT: "tt_gpsConsent",
   DISCLAIMER_SEEN: "tt_disclaimerSeen",
 };
+
+export const PAY_PERIOD_TYPES = {
+  SEMI_MONTHLY: "semi_monthly",
+  BI_WEEKLY: "bi_weekly",
+  WEEKLY: "weekly",
+};
+
+export const PAY_PERIOD_LABELS = {
+  semi_monthly: "Semi-monthly (1-15 / 16-end)",
+  bi_weekly: "Bi-weekly (Thu → Wed)",
+  weekly: "Weekly (Mon → Sun)",
+};
+
+// Anchor for bi-weekly cycle: Thursday 2026-04-30 (period 1 first day).
+// Period: Thu → Wed, 14 days. Mathematically equivalent to any Thursday offset by a multiple of 14 days.
+export const BI_WEEKLY_ANCHOR = "2026-04-30";
+
+// FLSA / NY / NJ standard: 40h/week threshold for overtime (W2 only).
+export const DEFAULT_OVERTIME_THRESHOLD = 40;

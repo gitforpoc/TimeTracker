@@ -69,13 +69,30 @@
         <button class="tab" data-tab="map">Map</button>
       </nav>
 
+      <!-- Global period bar — applies to Dashboard and Employees tabs only.
+           Shift Log has its own date filters; Live and Map are real-time. -->
+      <div id="global-period-bar" class="dash-period-row">
+        <label class="period-type-label">
+          Period
+          <select id="period-type-select">
+            <option value="bi_weekly">Bi-weekly (Thu → Wed)</option>
+            <option value="semi_monthly">Semi-monthly (1-15 / 16-end)</option>
+            <option value="weekly">Weekly (Mon → Sun)</option>
+            <option value="custom">Custom…</option>
+          </select>
+        </label>
+        <button id="dash-prev" class="btn-sm">← Prev</button>
+        <span id="dash-period-label" class="dash-period-label"></span>
+        <button id="dash-next" class="btn-sm">Next →</button>
+        <span id="custom-period-controls" class="hidden">
+          <input type="date" id="custom-start" />
+          <input type="date" id="custom-end" />
+          <button id="custom-apply" class="btn-sm">Apply</button>
+        </span>
+      </div>
+
       <!-- Dashboard tab -->
       <section id="tab-dashboard" class="tab-content active-tab">
-        <div class="dash-period-row">
-          <span id="dash-period-label" class="dash-period-label"></span>
-          <button id="dash-prev" class="btn-sm">← Prev</button>
-          <button id="dash-next" class="btn-sm">Next →</button>
-        </div>
         <div id="dash-cards" class="dash-cards"></div>
         <div class="dash-section">
           <h3 class="dash-section-title">Hours by Employee</h3>
@@ -109,8 +126,21 @@
         <div id="emp-detail" class="emp-detail hidden">
           <button id="emp-back" class="btn-sm">← Back to list</button>
           <h3 id="emp-detail-name" class="emp-detail-name"></h3>
-          <div id="emp-detail-cards" class="dash-cards"></div>
-          <div id="emp-detail-table" class="emp-detail-table"></div>
+
+          <div class="emp-section">
+            <h4 class="emp-section-title">Summary <span class="emp-section-hint" id="emp-detail-period"></span></h4>
+            <div id="emp-detail-cards" class="dash-cards"></div>
+          </div>
+
+          <div class="emp-section emp-section-week" id="emp-detail-week-wrap" style="display:none;">
+            <h4 class="emp-section-title">Weekly Overtime Breakdown <span class="emp-section-hint">FLSA Mon–Sun, &gt;40h = 1.5×</span></h4>
+            <div id="emp-detail-week"></div>
+          </div>
+
+          <div class="emp-section">
+            <h4 class="emp-section-title">Day-by-Day <span class="emp-section-hint">Each shift in the selected period</span></h4>
+            <div id="emp-detail-table" class="emp-detail-table"></div>
+          </div>
         </div>
       </section>
 
@@ -131,6 +161,7 @@
               <th>Status</th>
               <th>Since</th>
               <th>Duration</th>
+              <th>Week (Mon–Now)</th>
             </tr>
           </thead>
           <tbody id="status-body"></tbody>
@@ -276,6 +307,60 @@
       <div class="modal-actions">
         <button id="confirm-cancel" class="btn-sm">Cancel</button>
         <button id="confirm-ok" class="btn-sm btn-save">Confirm & Save</button>
+      </div>
+    </div>
+
+    <!-- Employee Edit Modal -->
+    <div id="emp-edit-overlay" class="modal-overlay hidden"></div>
+    <div id="emp-edit-modal" class="modal hidden">
+      <h3>Edit Employee — <span id="emp-edit-name"></span></h3>
+      <div class="modal-fields">
+        <label>
+          Warehouse
+          <select id="emp-edit-warehouse">
+            <option value="Maspeth">Maspeth</option>
+            <option value="Skillman">Skillman</option>
+            <option value="White Plains">White Plains</option>
+            <option value="Bins">Bins</option>
+            <option value="Bronx">Bronx</option>
+            <option value="Roselle">Roselle</option>
+            <option value="Traffic">Traffic</option>
+            <option value="LIC">LIC</option>
+          </select>
+        </label>
+        <label>
+          Employment Type
+          <select id="emp-edit-employment-type">
+            <option value="">— Not set —</option>
+            <option value="W2">W2 (Employee)</option>
+            <option value="1099">1099 (Contractor)</option>
+          </select>
+        </label>
+        <label>
+          Hourly Rate ($)
+          <input type="number" id="emp-edit-rate" min="0" step="0.01" placeholder="Optional — leave blank to skip pay calc" />
+        </label>
+        <label>
+          Pay Period
+          <select id="emp-edit-pay-period">
+            <option value="semi_monthly">Semi-monthly (1-15 / 16-end)</option>
+            <option value="bi_weekly">Bi-weekly (Thu → Wed)</option>
+            <option value="weekly">Weekly (Mon → Sun)</option>
+          </select>
+        </label>
+        <label>
+          Overtime Threshold (h/week)
+          <input type="number" id="emp-edit-ot-threshold" min="1" max="168" step="1" />
+          <span class="field-hint">Default 40 (NY/NJ FLSA standard, W2 only)</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="emp-edit-active" />
+          <span>Active employee (uncheck to soft-delete — data retained)</span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button id="emp-edit-cancel" class="btn-sm">Cancel</button>
+        <button id="emp-edit-save" class="btn-sm btn-save" disabled>Save</button>
       </div>
     </div>
 

@@ -17,5 +17,14 @@ export const state = {
   employeeLayers: [], // employee markers on map
   editingZone: null, // zone being edited
   dashPeriod: null, // { start: Date, end: Date, label: string }
+  payPeriodType: "bi_weekly", // company-wide period type for admin views: semi_monthly | bi_weekly | weekly | custom
+  customPeriod: null, // { start: Date, end: Date } when payPeriodType === "custom"
   employeeSettings: [], // from tt_employee_settings
+  adminRole: null, // 'admin' or 'supervisor' — admin sees pay rates, supervisor doesn't
+  loadToken: 0, // monotonic counter to ignore stale async results after rapid period changes
 };
+
+// Helper: only admins should see/edit pay rates and $ amounts. Supervisors see hours only.
+export function isAdmin() {
+  return state.adminRole === "admin";
+}

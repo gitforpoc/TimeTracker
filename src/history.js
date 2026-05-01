@@ -3,6 +3,7 @@ import { sync } from "./sync.js";
 import { showDialog } from "./dialogs.js";
 import { formatTime, formatDate, minsToHm, copyToClipboard, showToast, escapeHtml } from "./utils.js";
 import { getSupabaseClient } from "./auth.js";
+import { getPeriodList } from "./payPeriods.js";
 
 let els = null;
 let currentReportText = "";
@@ -16,6 +17,10 @@ let editedShiftIds = new Set(
 // Server data cache for SSO users
 let serverShifts = null; // array of normalized shift objects
 let adjustedShiftIds = new Set(); // shifts edited by someone other than current user
+
+// Pay period configuration for this user (fetched once after auth)
+let userPayPeriodType = "semi_monthly"; // default — matches all 22 employees as of migration
+let periodMap = new Map(); // value-string → { start: Date, end: Date, label: string }
 
 const EDIT_REASONS = [
   "Forgot to clock out",
@@ -38,19 +43,32 @@ export function setAuthState(authenticated, token, userId) {
   authUserId = userId || null;
 }
 
+// Fetch this user's pay_period_type from tt_employee_settings.
+// Defaults to "semi_monthly" if not set or unauthenticated. Cached for session.
+async function fetchPayPeriodType() {
+  if (!isUserAuthenticated || !store.userName) return;
+  try {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+    const { data } = await supabase
+      .from("tt_employee_settings")
+      .select("pay_period_type")
+      .eq("user_name", store.userName)
+      .maybeSingle();
+    if (data?.pay_period_type) userPayPeriodType = data.pay_period_type;
+  } catch {
+    // Network error — keep default
+  }
+}
+
 export async function openHistory() {
   resetBadge();
+  await fetchPayPeriodType();
   populatePeriods();
 
-  const today = new Date();
-  const y = today.getFullYear();
-  const m = today.getMonth();
-  const d = today.getDate();
-  const range = d <= 15 ? "1-15" : "16-31";
-  const currentVal = `${y}_${m}_${range}`;
-
-  if (els.periodSelect.querySelector(`option[value="${currentVal}"]`)) {
-    els.periodSelect.value = currentVal;
+  // Auto-select the current period (first option, since periods are listed newest-first)
+  if (els.periodSelect.options.length > 0) {
+    els.periodSelect.value = els.periodSelect.options[0].value;
   }
 
   els.historyView.classList.remove("hidden");
@@ -218,12 +236,10 @@ function getReportItems() {
     endDate = new Date(eY, eM - 1, eD);
     endDate.setHours(23, 59, 59, 999);
   } else {
-    const [y, m, range] = val.split("_");
-    const [startD, endD] = range.includes("15") ? [1, 15] : [16, 31];
-    startDate = new Date(y, m, startD);
-    const lastDay = new Date(y, Number(m) + 1, 0).getDate();
-    endDate = new Date(y, m, Math.min(endD, lastDay));
-    endDate.setHours(23, 59, 59, 999);
+    const cached = periodMap.get(val);
+    if (!cached) return [];
+    startDate = cached.start;
+    endDate = cached.end;
   }
 
   let source;
@@ -626,27 +642,18 @@ function toLocalInput(iso) {
 function populatePeriods() {
   const select = els.periodSelect;
   select.innerHTML = "";
+  periodMap.clear();
 
-  const today = new Date();
-  const currentY = today.getFullYear();
-  const currentM = today.getMonth();
+  // Generate the 4 most recent periods of the user's pay period type (current + 3 prior)
+  const periods = getPeriodList(userPayPeriodType, 4, new Date());
 
-  const addOpt = (y, m, isFirst) => {
-    const mName = new Date(y, m, 1).toLocaleDateString("en-US", { month: "short" });
-    const val = `${y}_${m}_${isFirst ? "1-15" : "16-31"}`;
-    const label = `${mName} ${isFirst ? "1-15" : "16-End"}, ${y}`;
+  for (const p of periods) {
+    periodMap.set(p.value, { start: p.start, end: p.end, label: p.label });
     const opt = document.createElement("option");
-    opt.value = val;
-    opt.innerText = label;
+    opt.value = p.value;
+    opt.innerText = p.label;
     select.appendChild(opt);
-  };
-
-  const isFirst = today.getDate() <= 15;
-  addOpt(currentY, currentM, isFirst);
-  addOpt(currentY, currentM, !isFirst);
-  const prevDate = new Date(currentY, currentM - 1, 1);
-  addOpt(prevDate.getFullYear(), prevDate.getMonth(), false);
-  addOpt(prevDate.getFullYear(), prevDate.getMonth(), true);
+  }
 
   const customOpt = document.createElement("option");
   customOpt.value = "custom";

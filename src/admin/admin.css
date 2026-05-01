@@ -1416,13 +1416,64 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   align-items: center;
   gap: 12px;
   margin-bottom: 20px;
+  flex-wrap: wrap;
 }
 
 .dash-period-label {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text);
-  margin-right: auto;
+  font-family: var(--mono);
+  padding: 6px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 200px;
+  text-align: center;
+}
+
+.period-type-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.period-type-label select {
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
+
+.period-type-label select:hover {
+  border-color: var(--border-active);
+}
+
+#custom-period-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+#custom-period-controls input[type="date"] {
+  padding: 5px 8px;
+  font-size: 12px;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
 }
 
 /* Summary cards */
@@ -1524,13 +1575,136 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   min-width: 2px;
 }
 
+.dash-bar-fill.split {
+  display: flex;
+  background: none;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.dash-bar-fill.split .dash-bar-reg {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+
+.dash-bar-fill.split .dash-bar-ot {
+  height: 100%;
+  background: linear-gradient(90deg, #ec4899, #ff6b9a);
+}
+
 .dash-bar-hours {
-  width: 60px;
-  min-width: 60px;
+  width: 110px;
+  min-width: 110px;
   font-size: 12px;
   font-family: var(--mono);
   color: var(--text-dim);
   text-align: left;
+}
+
+.dash-bar-ot-text {
+  color: #ff6b9a;
+  font-weight: 700;
+}
+
+.dash-bar-type {
+  display: inline-block;
+  padding: 0 4px;
+  margin-left: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  font-family: var(--mono);
+  vertical-align: middle;
+}
+
+.dash-bar-type.type-w2 {
+  background: rgba(96, 165, 250, 0.2);
+  color: #60a5fa;
+}
+
+.dash-bar-type.type-1099 {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+.dash-card.dash-card-action {
+  cursor: pointer;
+  border: 1px dashed var(--border-active);
+  transition: background var(--transition-med);
+}
+
+.dash-card.dash-card-action:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.04));
+}
+
+.accent-gray {
+  color: var(--gray, #9ca3af);
+}
+
+/* Status table — week progress */
+.status-type-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  font-family: var(--mono);
+  vertical-align: middle;
+}
+
+.status-type-badge.type-w2 {
+  background: rgba(96, 165, 250, 0.18);
+  color: #60a5fa;
+}
+
+.status-type-badge.type-1099 {
+  background: rgba(251, 191, 36, 0.18);
+  color: #fbbf24;
+}
+
+.week-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 140px;
+}
+
+.week-progress-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.week-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+  transition: width 0.4s ease;
+  border-radius: 4px;
+}
+
+.week-progress-fill.near {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.week-progress-fill.over {
+  background: linear-gradient(90deg, #ec4899, #ff6b9a);
+}
+
+.week-progress-text {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.week-simple {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 /* Daily activity */
@@ -1671,8 +1845,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 }
 
 .emp-card {
-  display: grid;
-  grid-template-columns: 1fr auto auto auto auto;
+  display: flex;
   align-items: center;
   gap: 16px;
   padding: 14px 16px;
@@ -1684,9 +1857,197 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-bottom: 6px;
 }
 
+.emp-card .emp-card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.emp-card .emp-progress-wrap {
+  flex: 0 0 80px;
+}
+
+.emp-stat-ot .emp-stat-value {
+  color: #ff6b9a;
+}
+
+.emp-stat-ot .emp-stat-label {
+  color: #ff6b9a;
+  font-weight: 700;
+}
+
+.dash-card-sub {
+  font-size: 11px;
+  color: var(--gray);
+  margin-top: 4px;
+  font-family: var(--mono);
+}
+
+.emp-week-section {
+  margin-top: 16px;
+}
+
+.emp-section {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.emp-section:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.emp-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0 0 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.emp-section-hint {
+  font-size: 11px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--gray);
+}
+
+.emp-detail-type-badge {
+  display: inline-block;
+  margin-left: 12px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  font-family: var(--mono);
+  vertical-align: middle;
+}
+
+.emp-detail-type-badge.type-w2 {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.emp-detail-type-badge.type-1099 {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.emp-week-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+.emp-week-table th,
+.emp-week-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.emp-week-table th {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--gray);
+  font-weight: 600;
+}
+
+.emp-week-table tr.ot-positive td {
+  color: #ff6b9a;
+  font-weight: 600;
+}
+
 .emp-card:hover {
   border-color: var(--border-active);
   transform: translateX(4px);
+}
+
+.emp-card.emp-inactive {
+  opacity: 0.5;
+}
+
+.emp-card.emp-inactive .emp-card-name::after {
+  content: " (inactive)";
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--gray);
+}
+
+.emp-edit-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--gray);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-med), color var(--transition-med), border-color var(--transition-med);
+}
+
+.emp-edit-btn:hover {
+  background: var(--surface-hover, rgba(255, 255, 255, 0.05));
+  color: var(--text);
+  border-color: var(--border-active);
+}
+
+.emp-type-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 4px;
+  margin-left: 6px;
+  font-family: var(--mono);
+}
+
+.emp-type-badge.emp-type-w2 {
+  background: rgba(96, 165, 250, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.3);
+}
+
+.emp-type-badge.emp-type-1099 {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.3);
+}
+
+.checkbox-label {
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+}
+
+.field-hint {
+  display: block;
+  font-size: 11px;
+  color: var(--gray);
+  margin-top: 2px;
+  font-weight: 400;
 }
 
 .emp-card-name {
