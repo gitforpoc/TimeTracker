@@ -10,7 +10,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@mpoc/auth": "file:../shared-auth",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.91.1"
   },
