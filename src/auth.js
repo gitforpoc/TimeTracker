@@ -4,9 +4,6 @@ const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 // SSO: same cookie domain as Hub, WMS-Map, Report
-// NOTE: this client setup is duplicated across mpoctools apps. To unify, see
-// shared-docs/AUTH-UNIFICATION-PLAN.md. Pending decision on distribution
-// mechanism (GitHub repo dependency vs npm publish vs vendoring).
 const _cookieDomain = location.hostname.includes("mpoctools.com")
   ? ".mpoctools.com"
   : "";
