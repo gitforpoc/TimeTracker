@@ -198,6 +198,7 @@ async function performClockAction(action) {
   const now = new Date();
   const timeStr = formatTime(now);
   let msg = "";
+  let syncItemId = null;
 
   if (action === "in") {
     const newShift = {
@@ -226,13 +227,15 @@ async function performClockAction(action) {
       localTime: timeStr,
       ...getMetaFields(),
     });
+    syncItemId = newShift.id;
   } else {
     const shift = store.findShift(store.currentShiftId);
     if (shift) {
       shift.out = now.getTime();
       shift.duration = Math.floor((shift.out - shift.in) / 60000);
 
-      sync.schedule(shift.id + "_out", {
+      const outId = `${shift.id}_out`;
+      sync.schedule(outId, {
         name: store.userName,
         action: "Clock Out",
         id: shift.id,
@@ -240,6 +243,7 @@ async function performClockAction(action) {
         localTime: timeStr,
         ...getMetaFields(),
       });
+      syncItemId = outId;
     }
 
     store.status = "out";
@@ -251,6 +255,17 @@ async function performClockAction(action) {
     msg = `${timeStr} ${store.userName} - clock out`;
   }
 
+  // Wait briefly for the first POST attempt to hit the server before opening
+  // the share dialog. This gives the user visible certainty: by the time
+  // WhatsApp opens, the data is on the server (or at least we tried with full
+  // foreground attention). Up to 3 seconds — typically completes in <500ms.
+  // If it times out, queue continues to retry in background; we proceed anyway
+  // so the user isn't stuck.
+  if (syncItemId !== null) {
+    els.mainBtn.innerText = "SAVING...";
+    await sync.awaitItem(syncItemId, 3000);
+  }
+
   els.mainBtn.disabled = false;
   renderUI();
   copyToClipboard(msg);
@@ -259,8 +274,7 @@ async function performClockAction(action) {
 
   if (store.autoShare) shareText(msg);
 
-  // Action complete — background sync may resume. Small delay to let the queued
-  // sync POST hit the server first so the next reconcile sees the new state.
+  // Action complete — background sync may resume.
   setTimeout(() => markClockActionEnd(), 2000);
 }
 
@@ -411,6 +425,21 @@ initComplianceUI();
 
 // Sync resumes after auth (see initAuth). On reconnect — retry queue.
 window.addEventListener("online", () => sync.processQueue());
+
+// If the queue has items but auth never completed (token getter still null),
+// re-run initAuth on visibility/online. This rescues the case where user
+// tapped Clock In before initAuth finished, then immediately backgrounded the
+// app — without this, queue would be stuck until manual reload.
+async function recoverStuckQueue() {
+  if (sync.pendingCount > 0 && !sync._getToken && store.userName) {
+    console.warn("[recovery] queue has items but no auth — retrying auth");
+    await initAuth();
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") recoverStuckQueue();
+});
+window.addEventListener("online", recoverStuckQueue);
 
 els.autoShareToggle.checked = store.autoShare;
 els.autoShareToggle.addEventListener("change", (e) => {

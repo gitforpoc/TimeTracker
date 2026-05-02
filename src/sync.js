@@ -7,6 +7,8 @@ class SyncManager {
     );
     this.isSyncing = false;
     this._getToken = null;
+    // Per-item resolvers for awaitItem(). Keyed by item id, value is the resolve fn.
+    this._waiters = new Map();
   }
 
   setTokenGetter(fn) {
@@ -38,11 +40,43 @@ class SyncManager {
         await this._send(item.payload, token);
         this.queue = this.queue.filter((i) => i.id !== item.id);
         this._saveQueue();
+        // Notify any awaitItem() callers that this item has shipped
+        const waiter = this._waiters.get(item.id);
+        if (waiter) {
+          waiter(true); // true = success
+          this._waiters.delete(item.id);
+        }
       } catch {
         break; // Stop on first failure (preserve order)
       }
     }
     this.isSyncing = false;
+  }
+
+  /**
+   * Wait for a specific queued item to be successfully sent. Resolves true on send,
+   * false on timeout. Use to delay UI confirmation (e.g. share dialog) until the
+   * server actually has the data — gives the user visible certainty.
+   *
+   * @param {*} id - the item id passed to schedule()
+   * @param {number} timeoutMs - max wait before resolving false (default 3000)
+   * @returns {Promise<boolean>}
+   */
+  awaitItem(id, timeoutMs = 3000) {
+    // If already shipped (not in queue), resolve immediately
+    if (!this.queue.some((i) => i.id === id)) return Promise.resolve(true);
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this._waiters.delete(id);
+        resolve(false);
+      }, timeoutMs);
+
+      this._waiters.set(id, (success) => {
+        clearTimeout(timer);
+        resolve(success);
+      });
+    });
   }
 
   async _send(payload, token) {
