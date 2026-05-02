@@ -257,13 +257,13 @@ async function performClockAction(action) {
 
   // Wait briefly for the first POST attempt to hit the server before opening
   // the share dialog. This gives the user visible certainty: by the time
-  // WhatsApp opens, the data is on the server (or at least we tried with full
-  // foreground attention). Up to 3 seconds — typically completes in <500ms.
-  // If it times out, queue continues to retry in background; we proceed anyway
-  // so the user isn't stuck.
-  if (syncItemId !== null) {
-    els.mainBtn.innerText = "SAVING...";
-    await sync.awaitItem(syncItemId, 3000);
+  // WhatsApp opens, the data is on the server. Typically completes in <500ms;
+  // 2s timeout cap so user isn't stuck. Button keeps the pulsing .pending class
+  // (pulse-red animation) so it's visibly "working" the whole time.
+  // Skip for guest mode — sync queue won't process without auth, no point waiting.
+  if (syncItemId !== null && isAuthenticated) {
+    els.mainBtn.innerText = "SENDING...";
+    await sync.awaitItem(syncItemId, 2000);
   }
 
   els.mainBtn.disabled = false;
