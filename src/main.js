@@ -32,6 +32,12 @@ import {
   showContractorDisclaimer,
   initComplianceUI,
 } from "./compliance.js";
+import {
+  syncShiftStateFromServer,
+  installVisibilityListener,
+  markClockActionStart,
+  markClockActionEnd,
+} from "./syncShiftState.js";
 
 // --- DOM Elements ---
 const els = {
@@ -181,6 +187,8 @@ function getMetaFields() {
 // --- Core Actions ---
 async function performClockAction(action) {
   closeActionSheet();
+  // Block background state-sync while we're mid-action (avoid race with cross-browser reconcile)
+  markClockActionStart();
   // Show immediate feedback while GPS resolves
   els.mainBtn.classList.add("pending");
   els.mainBtn.innerText = action === "in" ? "STARTING..." : "ENDING...";
@@ -250,6 +258,10 @@ async function performClockAction(action) {
   incrementBadge();
 
   if (store.autoShare) shareText(msg);
+
+  // Action complete — background sync may resume. Small delay to let the queued
+  // sync POST hit the server first so the next reconcile sees the new state.
+  setTimeout(() => markClockActionEnd(), 2000);
 }
 
 async function addSpecialDay(type) {
@@ -339,6 +351,20 @@ async function initAuth(retryCount = 0) {
           return s?.access_token || null;
         });
         sync.processQueue();
+
+        // Reconcile shift state with server — fixes stale localStorage when user
+        // hops between browsers/devices. Re-syncs on visibilitychange + focus.
+        const onSyncedStateChange = ({ reason }) => {
+          renderUI();
+          if (reason === "server-closed-elsewhere") {
+            showToast("Shift was ended on another device");
+          } else if (reason === "server-open-elsewhere") {
+            showToast("Resumed shift from another device");
+          }
+        };
+        // Initial reconciliation, after token is set so RLS reads work
+        syncShiftStateFromServer(onSyncedStateChange);
+        installVisibilityListener(onSyncedStateChange);
 
         // Show admin link for supervisors/admins (non-blocking)
         client.from("user_access")

@@ -72,7 +72,14 @@ async function init() {
       // Logged in but not admin/supervisor
       $("#access-denied").classList.remove("hidden");
     } else {
-      // No session at all — show login form
+      // No session — production redirects to centralized Hub login.
+      // Localhost / preview falls back to the in-app form (Hub /login can't
+      // return cookies to localhost since they live on .mpoctools.com).
+      if (location.hostname.endsWith("mpoctools.com")) {
+        const returnTo = encodeURIComponent(location.href);
+        location.replace(`https://mpoctools.com/login?return_to=${returnTo}`);
+        return;
+      }
       $("#login-screen").classList.remove("hidden");
       setupLogin();
     }
