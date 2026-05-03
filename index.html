@@ -18,8 +18,61 @@
       href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
+
+    <!-- Inline splash styles — must paint before main CSS loads to prevent FOUC -->
+    <style>
+      #splash-screen {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: #1c1c57;
+        color: #fff;
+        font-family: "Poppins", system-ui, sans-serif;
+      }
+      #splash-screen .logo-text {
+        font-size: 24px;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        margin-bottom: 20px;
+      }
+      #splash-screen .logo-text .pink {
+        color: #ff399a;
+      }
+      #splash-screen .spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid rgba(255, 255, 255, 0.2);
+        border-top-color: #ff399a;
+        border-radius: 50%;
+        animation: tt-spin 0.7s linear infinite;
+      }
+      @keyframes tt-spin {
+        to { transform: rotate(360deg); }
+      }
+      #splash-screen.fade-out {
+        animation: tt-splash-fade 0.25s ease forwards;
+      }
+      @keyframes tt-splash-fade {
+        to { opacity: 0; visibility: hidden; }
+      }
+      /* Hide app until auth is resolved — prevents UI flash before redirect */
+      .app {
+        visibility: hidden;
+      }
+      .app.ready {
+        visibility: visible;
+      }
+    </style>
   </head>
   <body>
+    <div id="splash-screen">
+      <div class="logo-text">TIME<span class="pink">TRACKER</span></div>
+      <div class="spinner"></div>
+    </div>
     <div class="app">
       <header>
         <div class="logo">TIME<span class="pink-text">TRACKER</span></div>

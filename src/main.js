@@ -342,6 +342,21 @@ async function addSpecialDay(type) {
 // --- SSO Auth ---
 let isAuthenticated = false;
 
+// Reveal the app and dismiss the splash screen. Called once auth has resolved
+// (either successfully → app shown; or guest mode on localhost → app shown).
+// On production redirect-to-login, we deliberately DO NOT call this — the
+// splash stays visible while the browser navigates away, preventing a flash
+// of the underlying app UI.
+function revealApp() {
+  const splash = document.getElementById("splash-screen");
+  if (splash) {
+    splash.classList.add("fade-out");
+    splash.addEventListener("animationend", () => splash.remove(), { once: true });
+  }
+  const appEl = document.querySelector(".app");
+  if (appEl) appEl.classList.add("ready");
+}
+
 async function initAuth(retryCount = 0) {
   const auth = await checkAuth();
   if (auth) {
@@ -350,6 +365,7 @@ async function initAuth(retryCount = 0) {
     els.username.value = auth.name;
     els.username.readOnly = true;
     els.username.classList.add("locked");
+    revealApp(); // session valid — show the app immediately
 
     // Get token for APIs and set up sync
     const { getSupabaseClient } = await import("./auth.js");
@@ -414,14 +430,15 @@ async function initAuth(retryCount = 0) {
     return;
   } else if (!isAuthenticated && location.hostname.endsWith("mpoctools.com")) {
     // No session AND retries exhausted (or no saved user) AND on production —
-    // redirect to centralized Hub login. This eliminates the silent guest-mode
-    // fallback that risks data loss when worker's cookie expires.
-    // Localhost / preview falls through to guest behavior (Hub login can't
-    // return cookies to localhost since they live on .mpoctools.com).
+    // redirect to centralized Hub login. Splash screen stays visible during
+    // the navigation (we deliberately don't call revealApp) to prevent a
+    // flash of the underlying TT UI before the redirect completes.
     const returnTo = encodeURIComponent(location.href);
     location.replace(`https://mpoctools.com/login?return_to=${returnTo}`);
     return;
   }
+  // Localhost / preview guest mode — reveal the app so dev can interact
+  revealApp();
   checkInputState();
 }
 
