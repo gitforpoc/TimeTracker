@@ -328,11 +328,11 @@ circle {
 }
 
 .modal {
+  /* `inset: 0` stretches the modal to fully fill .app (which is 100dvh tall via body).
+     This is more reliable than width/height 100% which can lag behind dynamic browser
+     chrome (Android bottom URL bar, Samsung Internet toolbar). */
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   background: var(--white);
   z-index: 10;
   display: flex;
@@ -436,9 +436,17 @@ circle {
 
 .modal-content {
   padding: 20px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  /* Generous bottom padding so last item clears any browser nav bar (Android
+     Chrome bottom URL bar, Samsung Internet toolbar) AND iOS home indicator.
+     100px is enough for typical mobile chrome; safe-area adds the iOS notch/home. */
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
   overflow-y: auto;
+  /* Prevents body scroll bleed when reaching the end of the modal scroll. */
+  overscroll-behavior: contain;
+  /* `flex: 1` + `min-height: 0` lets the content shrink and be scrollable —
+     without `min-height: 0`, a flex item won't shrink below its content height. */
   flex: 1;
+  min-height: 0;
   -webkit-overflow-scrolling: touch;
 }
 
