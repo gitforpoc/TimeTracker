@@ -411,6 +411,16 @@ async function initAuth(retryCount = 0) {
     // Had a saved user but auth failed — likely session refresh issue, retry
     console.warn(`Auth check failed for ${store.userName}, retrying (${retryCount + 1}/2)...`);
     setTimeout(() => initAuth(retryCount + 1), 3000);
+    return;
+  } else if (!isAuthenticated && location.hostname.endsWith("mpoctools.com")) {
+    // No session AND retries exhausted (or no saved user) AND on production —
+    // redirect to centralized Hub login. This eliminates the silent guest-mode
+    // fallback that risks data loss when worker's cookie expires.
+    // Localhost / preview falls through to guest behavior (Hub login can't
+    // return cookies to localhost since they live on .mpoctools.com).
+    const returnTo = encodeURIComponent(location.href);
+    location.replace(`https://mpoctools.com/login?return_to=${returnTo}`);
+    return;
   }
   checkInputState();
 }
