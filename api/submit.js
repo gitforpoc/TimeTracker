@@ -19,19 +19,19 @@ export default async function handler(req, res) {
     return;
   }
 
-  // --- Auth: Bearer token (validated if present, optional for legacy clients) ---
-  // TODO: Make mandatory once all clients are updated (check Bulat + old PWA users)
+  // --- Auth: Bearer token required ---
   const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    const token = authHeader.replace("Bearer ", "");
-    const authSupabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SERVICE_ROLE_KEY
-    );
-    const { data: { user }, error: authError } = await authSupabase.auth.getUser(token);
-    if (authError || !user) {
-      return res.status(401).json({ error: "Invalid or expired token" });
-    }
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "Missing Bearer token" });
+  }
+  const token = authHeader.replace("Bearer ", "");
+  const authSupabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const { data: { user }, error: authError } = await authSupabase.auth.getUser(token);
+  if (authError || !user) {
+    return res.status(401).json({ error: "Invalid or expired token" });
   }
 
   // Get URLs and Keys
