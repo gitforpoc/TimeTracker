@@ -33,7 +33,7 @@ export const PAY_PERIOD_TYPES = {
 export const PAY_PERIOD_LABELS = {
   semi_monthly: "Semi-monthly (1-15 / 16-end)",
   bi_weekly: "Bi-weekly (Thu → Wed)",
-  weekly: "Weekly (Mon → Sun)",
+  weekly: "Weekly (Thu → Wed)",
 };
 
 // Anchor for bi-weekly cycle: Thursday 2026-04-30 (period 1 first day).
