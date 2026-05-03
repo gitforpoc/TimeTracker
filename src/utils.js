@@ -20,7 +20,12 @@ export function minsToHm(m) {
 export function copyToClipboard(text) {
   navigator.clipboard
     .writeText(text)
-    .then(() => showToast("Copied to clipboard!"));
+    .then(() => showToast("Copied to clipboard!"))
+    .catch(() => {
+      // Silently swallow: caller may not have user-activation (e.g. after a
+      // dialog await). Prevents unhandled-rejection noise; the text is still
+      // visible in the preview area for manual copy.
+    });
 }
 
 export async function shareText(text) {

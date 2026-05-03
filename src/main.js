@@ -255,17 +255,12 @@ async function performClockAction(action) {
     msg = `${timeStr} ${store.userName} - clock out`;
   }
 
-  // Wait briefly for the first POST attempt to hit the server before opening
-  // the share dialog. This gives the user visible certainty: by the time
-  // WhatsApp opens, the data is on the server. Typically completes in <500ms;
-  // 2s timeout cap so user isn't stuck. Button keeps the pulsing .pending class
-  // (pulse-red animation) so it's visibly "working" the whole time.
-  // Skip for guest mode — sync queue won't process without auth, no point waiting.
-  if (syncItemId !== null && isAuthenticated) {
-    els.mainBtn.innerText = "SENDING...";
-    await sync.awaitItem(syncItemId, 2000);
-  }
-
+  // Note: previously awaited sync.awaitItem(2s) here so server-ack came before share.
+  // Removed because the setTimeout-based await consumed user-activation, breaking
+  // navigator.share() and navigator.clipboard.writeText() on Android Chrome
+  // (system promp "wants to see text and images copied to the clipboard",
+  // empty share sheet). Sync queue persists in localStorage and retries on
+  // visibilitychange / online — data still reaches the server reliably.
   els.mainBtn.disabled = false;
   renderUI();
   copyToClipboard(msg);
