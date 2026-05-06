@@ -167,11 +167,24 @@ function setupTabs() {
 
       persistState();
 
-      // Show global period bar only on tabs that use it
+      // Show global period bar on tabs that consume it (Live + Map are real-time only).
       const periodBar = $("#global-period-bar");
       if (periodBar) {
-        const usesPeriod = state.currentTab === "dashboard" || state.currentTab === "employees";
+        const usesPeriod = state.currentTab === "dashboard" || state.currentTab === "employees" || state.currentTab === "shifts";
         periodBar.style.display = usesPeriod ? "" : "none";
+      }
+
+      // When opening Shift Log, sync the filter inputs to the current period if they're empty
+      // (or unchanged from the last period sync) so users land on a sensible default.
+      if (state.currentTab === "shifts" && state.dashPeriod && state.payPeriodType !== "custom") {
+        const fStart = $("#filter-start");
+        const fEnd = $("#filter-end");
+        if (fStart && fEnd && (!fStart.value || !fEnd.value)) {
+          // formatDateISO is on dashboard/helpers — inline the format here to avoid extra import
+          const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+          fStart.value = iso(state.dashPeriod.start);
+          fEnd.value = iso(state.dashPeriod.end);
+        }
       }
 
       // Auto-load on tab switch

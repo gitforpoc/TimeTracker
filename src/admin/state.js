@@ -22,6 +22,7 @@ export const state = {
   employeeSettings: [], // from tt_employee_settings
   adminRole: null, // 'admin' or 'supervisor' — admin sees pay rates, supervisor doesn't
   loadToken: 0, // monotonic counter to ignore stale async results after rapid period changes
+  scheduleMap: null, // Map<dateISO, Map<userName, {planMinutes,...}>> — lazy-loaded from /schedule.csv
 };
 
 // Helper: only admins should see/edit pay rates and $ amounts. Supervisors see hours only.

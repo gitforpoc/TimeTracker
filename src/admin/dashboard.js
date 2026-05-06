@@ -2,12 +2,15 @@ import { state, isAdmin } from "./state.js";
 import { $, esc, formatDateISO, formatDateShort, formatTimeShort } from "./helpers.js";
 import { hideEmployeeDetail, loadEmployeesTab } from "./employees.js";
 import {
-  calculateWeeklyOvertime,
-  getWorkWeekStart,
+  calculatePeriodOvertime,
   getSemiMonthlyPeriod,
   getBiWeeklyPeriod,
   getWeeklyPeriod,
+  effectiveShiftMinutes,
 } from "../payPeriods.js";
+import { SOFT_CAP_HOURS } from "../constants.js";
+import { loadSchedule } from "./schedule.js";
+import { forecastEmployeeHours } from "./forecast.js";
 
 const PERIOD_TYPE_KEY = "tt_admin_period_type";
 const CUSTOM_PERIOD_KEY = "tt_admin_custom_period";
@@ -100,26 +103,71 @@ export function initDashPeriod() {
 }
 
 function syncPeriodTypeUI() {
-  const sel = $("#period-type-select");
-  if (sel) sel.value = state.payPeriodType;
+  // Update pill active state
+  document.querySelectorAll(".period-pill").forEach((p) => {
+    const isActive = p.dataset.period === state.payPeriodType;
+    p.classList.toggle("is-active", isActive);
+    p.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
   const customBox = $("#custom-period-controls");
-  const prev = $("#dash-prev");
-  const next = $("#dash-next");
+  const stepper = document.querySelector(".period-stepper");
   const isCustom = state.payPeriodType === "custom";
   if (customBox) customBox.classList.toggle("hidden", !isCustom);
-  if (prev) prev.style.visibility = isCustom ? "hidden" : "";
-  if (next) next.style.visibility = isCustom ? "hidden" : "";
+  if (stepper) stepper.style.display = isCustom ? "none" : "";
 }
 
 function renderPeriodLabel() {
   const el = $("#dash-period-label");
-  if (el) el.textContent = state.dashPeriod.label;
+  if (el && state.dashPeriod) el.textContent = state.dashPeriod.label;
+  renderPeriodProgress();
+  renderJumpNow();
+}
+
+// Sub-line under the date label: shows where today falls inside the visible period.
+// Empty if today is outside the period (past or future).
+function renderPeriodProgress() {
+  const fill = $("#period-progress-fill");
+  if (!fill || !state.dashPeriod) return;
+  const now = new Date();
+  const start = state.dashPeriod.start;
+  const end = state.dashPeriod.end;
+  if (now < start || now > end) {
+    fill.style.width = "0%";
+    fill.dataset.state = "outside";
+    return;
+  }
+  const pct = ((now - start) / (end - start)) * 100;
+  fill.style.width = `${Math.min(100, Math.max(2, pct))}%`;
+  fill.dataset.state = "inside";
+}
+
+// "Jump to current period" — visible only when browsing a past/future period.
+function renderJumpNow() {
+  const btn = $("#period-jump-now");
+  if (!btn || !state.dashPeriod) return;
+  const now = new Date();
+  const isCurrent = now >= state.dashPeriod.start && now <= state.dashPeriod.end;
+  btn.classList.toggle("hidden", isCurrent || state.payPeriodType === "custom");
 }
 
 function reloadAllTabsForPeriod() {
+  // Dashboard + Employees + Shift Log all consume the global period.
+  // For Shift Log, sync the period dates into the From/To filter inputs so the user can still
+  // tweak them manually (custom dates within a period). Then trigger the same query.
+  if (state.payPeriodType !== "custom" && state.dashPeriod) {
+    const fStart = $("#filter-start");
+    const fEnd = $("#filter-end");
+    if (fStart && fEnd) {
+      fStart.value = formatDateISO(state.dashPeriod.start);
+      fEnd.value = formatDateISO(state.dashPeriod.end);
+    }
+  }
   if (state.currentTab === "dashboard") loadDashboard();
   else if (state.currentTab === "employees") loadEmployeesTab();
-  // Other tabs (Shift Log, Live, Map) don't use dashPeriod — period change applies when user navigates back.
+  else if (state.currentTab === "shifts") {
+    // Lazy-import to avoid a circular dependency at module load
+    import("./shifts.js").then((m) => { state.currentPage = 0; m.loadShifts(); });
+  }
 }
 
 export function setupDashboardNav() {
@@ -134,23 +182,37 @@ export function setupDashboardNav() {
     reloadAllTabsForPeriod();
   });
 
-  $("#period-type-select").addEventListener("change", (e) => {
-    const type = e.target.value;
-    state.payPeriodType = type;
-    localStorage.setItem(PERIOD_TYPE_KEY, type);
-    if (type === "custom") {
-      // Initialize custom inputs with current period if not set
-      const startEl = $("#custom-start");
-      const endEl = $("#custom-end");
-      if (!startEl.value) startEl.value = formatDateISO(state.dashPeriod.start);
-      if (!endEl.value) endEl.value = formatDateISO(state.dashPeriod.end);
-    } else {
-      state.dashPeriod = periodForType(new Date(), type);
+  // Period-type pills replace the old <select>
+  document.querySelectorAll(".period-pill").forEach((pill) => {
+    pill.addEventListener("click", () => {
+      const type = pill.dataset.period;
+      if (type === state.payPeriodType) return;
+      state.payPeriodType = type;
+      localStorage.setItem(PERIOD_TYPE_KEY, type);
+      if (type === "custom") {
+        const startEl = $("#custom-start");
+        const endEl = $("#custom-end");
+        if (!startEl.value) startEl.value = formatDateISO(state.dashPeriod.start);
+        if (!endEl.value) endEl.value = formatDateISO(state.dashPeriod.end);
+      } else {
+        state.dashPeriod = periodForType(new Date(), type);
+        renderPeriodLabel();
+        reloadAllTabsForPeriod();
+      }
+      syncPeriodTypeUI();
+    });
+  });
+
+  // "→ NOW" — jump to current period (only visible when browsing past/future)
+  const jumpBtn = $("#period-jump-now");
+  if (jumpBtn) {
+    jumpBtn.addEventListener("click", () => {
+      if (state.payPeriodType === "custom") return;
+      state.dashPeriod = periodForType(new Date(), state.payPeriodType);
       renderPeriodLabel();
       reloadAllTabsForPeriod();
-    }
-    syncPeriodTypeUI();
-  });
+    });
+  }
 
   $("#custom-apply").addEventListener("click", () => {
     const startStr = $("#custom-start").value;
@@ -183,12 +245,13 @@ export async function loadDashboard() {
   const startISO = formatDateISO(state.dashPeriod.start);
   const endISO = formatDateISO(state.dashPeriod.end);
 
-  // Current workweek for OT alerts — independent of the visible period so alerts always reflect
+  // Current pay period for OT alerts — independent of the visible period so alerts always reflect
   // today's reality (e.g. when user is browsing a past period dashboard).
-  const currentWeekStart = getWorkWeekStart(new Date());
-  const currentWeekStartISO = formatDateISO(currentWeekStart);
+  const currentPeriod = getBiWeeklyPeriod(new Date());
+  const currentPeriodStartISO = formatDateISO(currentPeriod.start);
+  const currentPeriodEndISO = formatDateISO(currentPeriod.end);
 
-  const [shiftsResult, settingsResult, weekShiftsResult] = await Promise.all([
+  const [shiftsResult, settingsResult, periodShiftsResult] = await Promise.all([
     state.supabase
       .from("tt_shifts")
       .select("id, user_name, clock_in, clock_out, duration_minutes, type")
@@ -200,7 +263,8 @@ export async function loadDashboard() {
       .from("tt_shifts")
       .select("user_name, clock_in, duration_minutes, type")
       .eq("type", "work")
-      .gte("clock_in", `${currentWeekStartISO}T00:00:00`)
+      .gte("clock_in", `${currentPeriodStartISO}T00:00:00`)
+      .lte("clock_in", `${currentPeriodEndISO}T23:59:59`)
       .limit(2000),
   ]);
 
@@ -208,16 +272,15 @@ export async function loadDashboard() {
 
   const rows = shiftsResult.data || [];
   const settings = settingsResult.data || [];
-  const currentWeekShifts = weekShiftsResult.data || [];
+  const currentPeriodShifts = periodShiftsResult.data || [];
   state.employeeSettings = settings; // share with employees tab
 
   const workShifts = rows.filter((s) => s.type === "work");
   const totalMin = workShifts.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
   const uniqueEmployees = [...new Set(rows.map((s) => s.user_name))];
 
-  // Per-employee weekly OT calc, period-bounded so Reg + OT == Total Hours always.
-  // Trade-off: workweeks split by the period boundary may show slightly low OT (a few hours).
-  // This keeps the math intuitive and matches simple payroll-period summaries.
+  // Per-employee per-PERIOD OT calc — sums all work hours in the visible period and applies
+  // threshold (default 80h) ONCE. Matches the company's actual payroll model.
   const settingsByName = {};
   settings.forEach((s) => { settingsByName[s.user_name] = s; });
 
@@ -226,9 +289,12 @@ export async function loadDashboard() {
     if (s.employment_type !== "W2") continue;
     if (!isActive(s)) continue; // soft-deleted employees skip payroll
     const empShifts = rows.filter((r) => r.user_name === s.user_name && r.type === "work");
-    const buckets = calculateWeeklyOvertime(empShifts, s.overtime_threshold || 40);
-    const regMin = buckets.reduce((sum, b) => sum + b.regMin, 0);
-    const otMin = buckets.reduce((sum, b) => sum + b.otMin, 0);
+    const { regMin, otMin } = calculatePeriodOvertime(
+      empShifts,
+      s.overtime_threshold || 80,
+      state.dashPeriod.start,
+      state.dashPeriod.end,
+    );
     const rate = Number(s.rate) || 0;
     const payTotal = (regMin / 60) * rate + (otMin / 60) * rate * 1.5;
     otByEmployee[s.user_name] = { regMin, otMin, payTotal, isW2: true, rate };
@@ -252,182 +318,244 @@ export async function loadDashboard() {
   const configuredCount = activeSettings.filter((s) => s.employment_type).length;
   const unsetCount = totalEmployees - configuredCount;
 
-  // Summary cards
-  const cardsEl = $("#dash-cards");
-  let cardsHtml = `
-    <div class="dash-card"><div class="dash-card-label">Working Now</div><div class="dash-card-value accent-green">${state.workingNames.length}</div></div>
-    <div class="dash-card"><div class="dash-card-label">Shifts This Period</div><div class="dash-card-value accent-pink">${rows.length}</div></div>
-    <div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${Math.round(totalMin / 60)}</div></div>`;
-
-  if (w2Count > 0) {
-    const otH = Math.round(w2Total.otMin / 60 * 10) / 10;
-    cardsHtml += `<div class="dash-card"><div class="dash-card-label">W2 Overtime</div><div class="dash-card-value ${otH > 0 ? "accent-pink" : "accent-gray"}">${otH}h</div><div class="dash-card-sub">${w2Count} W2 employee${w2Count > 1 ? "s" : ""}</div></div>`;
-
-    // Pay totals are admin-only (supervisors see hours, not money)
-    if (isAdmin() && w2Total.hasRate && w2Total.payTotal > 0) {
-      cardsHtml += `<div class="dash-card"><div class="dash-card-label">W2 Payroll Cost</div><div class="dash-card-value accent-yellow">${fmtMoney(w2Total.payTotal)}</div><div class="dash-card-sub">reg + OT (1.5×)</div></div>`;
-    }
-  } else {
-    cardsHtml += `<div class="dash-card"><div class="dash-card-label">Active Employees</div><div class="dash-card-value accent-yellow">${uniqueEmployees.length}</div></div>`;
+  // Lazy-load schedule once per session — used for forecast and heat map.
+  if (!state.scheduleMap) {
+    state.scheduleMap = await loadSchedule();
   }
 
-  // Setup status nudge (only shown if any employees are unset)
-  if (unsetCount > 0) {
-    cardsHtml += `<div class="dash-card dash-card-action" id="dash-setup-nudge"><div class="dash-card-label">Setup</div><div class="dash-card-value accent-gray">${configuredCount}/${totalEmployees}</div><div class="dash-card-sub">${unsetCount} employee${unsetCount > 1 ? "s" : ""} need W2/1099 set</div></div>`;
-  }
-
-  cardsEl.innerHTML = cardsHtml;
-
-  // Wire setup nudge → switch to Employees tab
-  const nudge = $("#dash-setup-nudge");
-  if (nudge) {
-    nudge.addEventListener("click", () => {
-      const tabBtn = document.querySelector(".tab[data-tab=\"employees\"]");
-      if (tabBtn) tabBtn.click();
-    });
-  }
-
-  // Hours bar chart — segmented for W2 (reg blue + OT pink), single bar for others
-  const hoursByEmp = {};
-  workShifts.forEach((s) => {
-    hoursByEmp[s.user_name] = (hoursByEmp[s.user_name] || 0) + (s.duration_minutes || 0);
-  });
-  const sorted = Object.entries(hoursByEmp).sort((a, b) => b[1] - a[1]);
-  const maxMin = sorted.length ? sorted[0][1] : 1;
-
-  const barsEl = $("#dash-bars");
-  if (sorted.length === 0) {
-    barsEl.innerHTML = '<div class="dash-alert-none">No work shifts in this period</div>';
-  } else {
-    barsEl.innerHTML = sorted.map(([name, min]) => {
-      const pct = Math.max(1, Math.round((min / maxMin) * 100));
-      const otData = otByEmployee[name];
-      const empType = settingsByName[name]?.employment_type;
-      const typeBadge = empType ? `<span class="dash-bar-type type-${empType.toLowerCase()}">${esc(empType)}</span>` : "";
-
-      let fillHtml;
-      let labelText;
-      if (otData && otData.otMin > 0) {
-        // Two-color split: reg portion vs OT portion
-        const regPct = Math.round((otData.regMin / (otData.regMin + otData.otMin)) * 100);
-        fillHtml = `<div class="dash-bar-fill split" style="width:${pct}%">
-          <div class="dash-bar-reg" style="width:${regPct}%"></div>
-          <div class="dash-bar-ot" style="width:${100 - regPct}%"></div>
-        </div>`;
-        const regH = Math.round(otData.regMin / 60 * 10) / 10;
-        const otH = Math.round(otData.otMin / 60 * 10) / 10;
-        labelText = `${regH}h <span class="dash-bar-ot-text">+${otH}h OT</span>`;
-      } else {
-        fillHtml = `<div class="dash-bar-fill" style="width:${pct}%"></div>`;
-        labelText = fmtHours(min);
-      }
-
-      return `<div class="dash-bar-row">
-        <span class="dash-bar-name">${esc(name)}${typeBadge}</span>
-        <div class="dash-bar-track">${fillHtml}</div>
-        <span class="dash-bar-hours">${labelText}</span>
-      </div>`;
-    }).join("");
-  }
-
-  // Daily activity — matches selected period
-  const dailyEl = $("#dash-daily");
-  const days = [];
-  const cur = new Date(state.dashPeriod.start);
-  const dailyEnd = new Date(state.dashPeriod.end);
-  while (cur <= dailyEnd) {
-    days.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  // Aggregate shifts and hours per day
-  const dayStats = {};
-  rows.forEach((s) => {
-    const key = new Date(s.clock_in).toDateString();
-    if (!dayStats[key]) dayStats[key] = { count: 0, minutes: 0, names: [] };
-    dayStats[key].count++;
-    if (s.type === "work") dayStats[key].minutes += s.duration_minutes || 0;
-    if (!dayStats[key].names.includes(s.user_name)) dayStats[key].names.push(s.user_name);
-  });
-  const maxCount = Math.max(1, ...Object.values(dayStats).map((d) => d.count));
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
-  dailyEl.innerHTML = days.map((d) => {
-    const key = d.toDateString();
-    const stat = dayStats[key] || { count: 0, minutes: 0, names: [] };
-    const hPct = stat.count > 0 ? Math.max(8, Math.round((stat.count / maxCount) * 100)) : 0;
-    const label = `${d.getMonth() + 1}/${d.getDate()}`;
-    const dayName = dayNames[d.getDay()];
-    const h = Math.floor(stat.minutes / 60);
-    const m = stat.minutes % 60;
-    const tooltip = stat.count > 0
-      ? `${dayName} ${label}: ${stat.count} shifts, ${h}h ${m}m\n${stat.names.join(", ")}`
-      : `${dayName} ${label}: no shifts`;
-    return `<div class="dash-daily-bar">
-      <div class="dash-daily-fill" style="height:${hPct}%" title="${tooltip}"></div>
-      <span class="dash-daily-label">${label}</span>
-    </div>`;
-  }).join("");
-
-  // Alerts
-  const alertsEl = $("#dash-alerts");
-  const alerts = [];
-
-  // OT alerts — use the dedicated current-week query so we capture the FULL Thu-Wed
-  // workweek regardless of the visible period. Alerts are about today's reality, not history.
   const now = new Date();
+
+  // ============================================================================================
+  // SECTION 1: Right Now
+  // ============================================================================================
+
+  const todayStr = now.toDateString();
+  const todayMin = workShifts
+    .filter((s) => new Date(s.clock_in).toDateString() === todayStr)
+    .reduce((sum, s) => sum + effectiveShiftMinutes(s, now), 0);
+
+  // Scheduled Today: cross-reference today's planned shifts (from CSV) with who's actually working.
+  // Format: "8 planned · 5 working · 1 missing" — supervisor can see coverage at a glance.
+  const todayISO = formatDateISO(now);
+  const scheduledToday = state.scheduleMap?.get(todayISO);
+  let coverageHtml;
+  if (scheduledToday && scheduledToday.size > 0) {
+    const scheduledNames = new Set(scheduledToday.keys());
+    const actuallyWorkingScheduled = state.workingNames.filter((n) => scheduledNames.has(n));
+    const startedToday = new Set(
+      workShifts.filter((s) => new Date(s.clock_in).toDateString() === todayStr).map((s) => s.user_name)
+    );
+    const missing = [...scheduledNames].filter((n) => !startedToday.has(n) && !state.workingNames.includes(n));
+    const planned = scheduledNames.size;
+    const working = actuallyWorkingScheduled.length;
+    const missingCount = missing.length;
+    const missingHtml = missingCount > 0
+      ? `<div class="dash-card-sub" title="${esc(missing.join(", "))}">${missingCount} missing: ${missing.slice(0, 3).map(esc).join(", ")}${missing.length > 3 ? "…" : ""}</div>`
+      : `<div class="dash-card-sub">all on track</div>`;
+    coverageHtml = `<div class="dash-card"><div class="dash-card-label">Scheduled Today</div><div class="dash-card-value accent-yellow">${planned} <span class="dash-card-fraction">· ${working} working</span></div>${missingHtml}</div>`;
+  } else {
+    coverageHtml = `<div class="dash-card"><div class="dash-card-label">Scheduled Today</div><div class="dash-card-value accent-gray">—</div><div class="dash-card-sub">no schedule for today</div></div>`;
+  }
+
+  $("#dash-now").innerHTML = `
+    <div class="dash-card"><div class="dash-card-label">Working Now</div><div class="dash-card-value accent-green">${state.workingNames.length}</div><div class="dash-card-sub">of ${activeSettings.length} active</div></div>
+    <div class="dash-card"><div class="dash-card-label">Today's Hours</div><div class="dash-card-value accent-blue">${Math.round(todayMin / 60)}h</div><div class="dash-card-sub">${todayStr.split(" ").slice(0, 3).join(" ")}</div></div>
+    ${coverageHtml}`;
+
+  // Right-Now alerts: open-shift-too-long, long completed shifts, soft-cap warnings (current period)
+  const alerts = [];
   for (const s of settings) {
     if (s.employment_type !== "W2") continue;
     if (!isActive(s)) continue;
-    const empWeekMin = currentWeekShifts
+    const empPeriodMin = currentPeriodShifts
       .filter((r) => r.user_name === s.user_name)
-      .reduce((sum, r) => {
-        if (r.clock_out || r.duration_minutes) return sum + (r.duration_minutes || 0);
-        // Open shift in current week: count elapsed since clock_in
-        return sum + Math.max(0, (now - new Date(r.clock_in)) / 60000);
-      }, 0);
-    const weekH = empWeekMin / 60;
-    const threshold = s.overtime_threshold || 40;
-
-    if (weekH > threshold) {
-      const overH = Math.round((weekH - threshold) * 10) / 10;
-      alerts.push({
-        type: "danger",
-        icon: "💸",
-        text: `${esc(s.user_name)} is over OT this week (${Math.round(weekH * 10) / 10}h, +${overH}h OT)`,
-      });
-    } else if (weekH >= threshold - 5) {
-      alerts.push({
-        type: "warn",
-        icon: "⏳",
-        text: `${esc(s.user_name)} is approaching OT (${Math.round(weekH * 10) / 10}h / ${threshold}h this week)`,
-      });
+      .reduce((sum, r) => sum + effectiveShiftMinutes(r, now), 0);
+    const periodH = empPeriodMin / 60;
+    const threshold = s.overtime_threshold || 80;
+    const periodHRounded = Math.round(periodH * 10) / 10;
+    if (periodH > SOFT_CAP_HOURS) {
+      alerts.push({ type: "danger", icon: "🛑", text: `${esc(s.user_name)} over soft cap (${periodHRounded}h / ${SOFT_CAP_HOURS}h)` });
+    } else if (periodH >= SOFT_CAP_HOURS - 20) {
+      alerts.push({ type: "warn", icon: "⚠️", text: `${esc(s.user_name)} approaching soft cap (${periodHRounded}h / ${SOFT_CAP_HOURS}h)` });
+    } else if (periodH > threshold) {
+      const overH = Math.round((periodH - threshold) * 10) / 10;
+      alerts.push({ type: "danger", icon: "💸", text: `${esc(s.user_name)} over OT (${periodHRounded}h, +${overH}h)` });
+    } else if (periodH >= threshold - 8) {
+      alerts.push({ type: "warn", icon: "⏳", text: `${esc(s.user_name)} approaching OT (${periodHRounded}h / ${threshold}h)` });
     }
   }
-
-  // Long shifts (within period)
-  const longShifts = workShifts.filter((s) => s.duration_minutes > 720);
-  longShifts.forEach((s) => {
+  workShifts.filter((s) => s.duration_minutes > 720).forEach((s) => {
     const h = Math.floor(s.duration_minutes / 60);
     const m = s.duration_minutes % 60;
     alerts.push({ type: "warn", icon: "⚠️", text: `${esc(s.user_name)} worked ${h}h ${m}m on ${formatDateShort(s.clock_in)}` });
   });
-
-  // Open shifts — only alert if older than 14 hours (likely forgot to clock out)
-  const openShifts = rows.filter((s) => {
-    if (s.type !== "work" || s.clock_out) return false;
-    const ageMinutes = (now - new Date(s.clock_in)) / 60000;
-    return ageMinutes > 840; // 14 hours
-  });
-  openShifts.forEach((s) => {
+  rows.filter((s) => s.type === "work" && !s.clock_out && (now - new Date(s.clock_in)) / 60000 > 840).forEach((s) => {
     alerts.push({ type: "danger", icon: "🔴", text: `${esc(s.user_name)} has an open shift since ${formatDateShort(s.clock_in)} ${formatTimeShort(s.clock_in)}` });
   });
+  $("#dash-alerts").innerHTML = alerts.length === 0
+    ? '<div class="dash-alert-none">No anomalies — all good</div>'
+    : alerts.map((a) => `<div class="dash-alert alert-${a.type}"><span class="dash-alert-icon">${a.icon}</span> ${a.text}</div>`).join("");
 
-  if (alerts.length === 0) {
-    alertsEl.innerHTML = '<div class="dash-alert-none">No alerts — looking good</div>';
-  } else {
-    alertsEl.innerHTML = alerts.map((a) =>
-      `<div class="dash-alert alert-${a.type}"><span class="dash-alert-icon">${a.icon}</span> ${a.text}</div>`
-    ).join("");
+  // ============================================================================================
+  // SECTION 2: Pay Period Status (cards + W2 employee table)
+  // ============================================================================================
+
+  let cardsHtml = `<div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${Math.round(totalMin / 60)}</div><div class="dash-card-sub">${rows.length} shifts</div></div>`;
+  if (w2Count > 0) {
+    const otH = Math.round(w2Total.otMin / 60 * 10) / 10;
+    cardsHtml += `<div class="dash-card"><div class="dash-card-label">W2 Overtime</div><div class="dash-card-value ${otH > 0 ? "accent-pink" : "accent-gray"}">${otH}h</div><div class="dash-card-sub">${w2Count} W2 employees</div></div>`;
+    if (isAdmin() && w2Total.hasRate && w2Total.payTotal > 0) {
+      cardsHtml += `<div class="dash-card"><div class="dash-card-label">W2 Payroll Cost</div><div class="dash-card-value accent-yellow">${fmtMoney(w2Total.payTotal)}</div><div class="dash-card-sub">reg + OT (1.5×)</div></div>`;
+    }
   }
+  if (unsetCount > 0) {
+    cardsHtml += `<div class="dash-card dash-card-action" id="dash-setup-nudge"><div class="dash-card-label">Setup</div><div class="dash-card-value accent-gray">${configuredCount}/${totalEmployees}</div><div class="dash-card-sub">${unsetCount} need W2/1099</div></div>`;
+  }
+  $("#dash-cards").innerHTML = cardsHtml;
+  const nudge = $("#dash-setup-nudge");
+  if (nudge) nudge.addEventListener("click", () => {
+    document.querySelector(".tab[data-tab=\"employees\"]")?.click();
+  });
+
+  // Per-W2-employee table with progress bar + forecast
+  const tableEl = $("#dash-period-table");
+  const w2Rows = [];
+  for (const s of settings) {
+    if (s.employment_type !== "W2") continue;
+    if (!isActive(s)) continue;
+    const ot = otByEmployee[s.user_name] || { regMin: 0, otMin: 0 };
+    const empTotalMin = ot.regMin + ot.otMin;
+    const threshold = s.overtime_threshold || 80;
+    const fc = forecastEmployeeHours({
+      userName: s.user_name,
+      actualMinutes: empTotalMin,
+      periodStart: state.dashPeriod.start,
+      periodEnd: state.dashPeriod.end,
+      scheduleMap: state.scheduleMap,
+      now,
+    });
+    w2Rows.push({ name: s.user_name, totalMin: empTotalMin, threshold, fc, ot, rate: Number(s.rate) || 0 });
+  }
+  // Sort by predicted hours descending (most-at-risk first)
+  w2Rows.sort((a, b) => b.fc.predictedMin - a.fc.predictedMin);
+
+  if (w2Rows.length === 0) {
+    tableEl.innerHTML = '<div class="dash-alert-none">No W2 employees configured yet — set them up in the Employees tab</div>';
+  } else {
+    let tableHtml = `<table class="dash-pp-table">
+      <thead><tr><th>Employee</th><th>Hours</th><th class="dash-pp-col-progress">Progress (0 → ${SOFT_CAP_HOURS}h cap)</th><th>Forecast end-of-period</th><th>Status</th></tr></thead><tbody>`;
+    for (const r of w2Rows) {
+      const h = r.totalMin / 60;
+      const predH = r.fc.predictedMin / 60;
+      const pctOfCap = Math.min(100, (h / SOFT_CAP_HOURS) * 100);
+      let zone = "ok";
+      let statusText = "On track";
+      if (h > SOFT_CAP_HOURS) { zone = "cap"; statusText = "OVER cap"; }
+      else if (h > r.threshold) { zone = "ot"; statusText = "Over OT"; }
+      else if (h >= r.threshold * 0.875) { zone = "near"; statusText = "Approaching OT"; }
+
+      let fcClass = "fc-ok";
+      let fcSuffix = "";
+      if (predH > SOFT_CAP_HOURS) { fcClass = "fc-cap"; fcSuffix = " ⚠ over cap"; }
+      else if (predH > r.threshold) { fcClass = "fc-ot"; fcSuffix = " ⚠ OT"; }
+      const fcBasisLabel = r.fc.basis === "schedule" ? "from schedule" : r.fc.basis === "linear" ? "estimated" : "final";
+
+      let payCell = "";
+      if (isAdmin() && r.rate > 0) {
+        const pay = (r.ot.regMin / 60) * r.rate + (r.ot.otMin / 60) * r.rate * 1.5;
+        payCell = `<div class="dash-pp-pay">~$${Math.round(pay)}</div>`;
+      }
+
+      const otMarkerPct = (r.threshold / SOFT_CAP_HOURS) * 100;
+
+      tableHtml += `<tr class="dash-pp-row dash-pp-zone-${zone}">
+        <td class="dash-pp-name"><a href="#" data-emp="${esc(r.name)}">${esc(r.name)}</a></td>
+        <td class="dash-pp-hours"><div class="dash-pp-hours-num">${Math.round(h * 10) / 10}h</div>${payCell}</td>
+        <td class="dash-pp-progress">
+          <div class="dash-pp-bar">
+            <div class="dash-pp-fill dash-pp-fill-${zone}" style="width:${pctOfCap}%"></div>
+            <span class="dash-pp-marker" title="OT threshold ${r.threshold}h" style="left:${otMarkerPct}%"></span>
+          </div>
+          <span class="dash-pp-bar-label">${Math.round(h)}h<span class="dash-pp-bar-mark"> · OT@${r.threshold}h · cap@${SOFT_CAP_HOURS}h</span></span>
+        </td>
+        <td class="dash-pp-forecast ${fcClass}">
+          <div class="dash-pp-fc-num">${Math.round(predH * 10) / 10}h${fcSuffix}</div>
+          <div class="dash-pp-fc-basis">${fcBasisLabel}</div>
+        </td>
+        <td class="dash-pp-status">${statusText}</td>
+      </tr>`;
+    }
+    tableHtml += "</tbody></table>";
+    tableEl.innerHTML = tableHtml;
+    tableEl.querySelectorAll("a[data-emp]").forEach((a) => {
+      a.addEventListener("click", (e) => {
+        e.preventDefault();
+        document.querySelector(".tab[data-tab=\"employees\"]")?.click();
+      });
+    });
+  }
+
+  // ============================================================================================
+  // SECTION 3: Period Heat Map — per-day planned + actual aggregated across team
+  // ============================================================================================
+
+  const hmEl = $("#dash-heatmap");
+  const days = [];
+  const dayCur = new Date(state.dashPeriod.start);
+  const periodEnd = new Date(state.dashPeriod.end);
+  while (dayCur <= periodEnd) {
+    days.push(new Date(dayCur));
+    dayCur.setDate(dayCur.getDate() + 1);
+  }
+
+  const actualByDay = {};
+  workShifts.forEach((s) => {
+    const iso = formatDateISO(new Date(s.clock_in));
+    actualByDay[iso] = (actualByDay[iso] || 0) + (s.duration_minutes || 0);
+  });
+  const plannedByDay = {};
+  if (state.scheduleMap) {
+    days.forEach((d) => {
+      const iso = formatDateISO(d);
+      const dayMap = state.scheduleMap.get(iso);
+      if (dayMap) {
+        let sum = 0;
+        for (const v of dayMap.values()) sum += v.planMinutes;
+        plannedByDay[iso] = sum;
+      }
+    });
+  }
+  const hmMaxMin = Math.max(1, ...days.map((d) => {
+    const iso = formatDateISO(d);
+    return Math.max(actualByDay[iso] || 0, plannedByDay[iso] || 0);
+  }));
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  hmEl.innerHTML = days.map((d) => {
+    const iso = formatDateISO(d);
+    const actual = actualByDay[iso] || 0;
+    const planned = plannedByDay[iso] || 0;
+    const dayName = dayNames[d.getDay()];
+    const dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
+    const dom = d.getDate();
+    const isHeatDay = dom >= 25 || dom <= 2;
+    const actPct = Math.round((actual / hmMaxMin) * 100);
+    const plnPct = Math.round((planned / hmMaxMin) * 100);
+    const isPast = d < now && d.toDateString() !== now.toDateString();
+    const isToday = d.toDateString() === now.toDateString();
+    const tooltip = `${dayName} ${dayLabel}\nPlanned: ${Math.round(planned / 60 * 10) / 10}h\nActual: ${Math.round(actual / 60 * 10) / 10}h${isHeatDay ? "\n⚡ Expected high load (end/start of month)" : ""}`;
+    const cellClass = ["dash-hm-cell"];
+    if (isHeatDay) cellClass.push("dash-hm-heat");
+    if (isToday) cellClass.push("dash-hm-today");
+    if (isPast) cellClass.push("dash-hm-past");
+    return `<div class="${cellClass.join(" ")}" title="${tooltip}">
+      <div class="dash-hm-day">${dayName}</div>
+      <div class="dash-hm-date">${dayLabel}</div>
+      <div class="dash-hm-bars">
+        <div class="dash-hm-planned" style="height:${plnPct}%"></div>
+        <div class="dash-hm-actual" style="height:${actPct}%"></div>
+      </div>
+      <div class="dash-hm-hours">${Math.round(actual / 60)}h${planned > 0 ? `<span class="dash-hm-planned-label"> / ${Math.round(planned / 60)}h</span>` : ""}</div>
+    </div>`;
+  }).join("");
 }

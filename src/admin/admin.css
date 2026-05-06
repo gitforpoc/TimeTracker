@@ -1274,17 +1274,15 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   50% { transform: scale(1.3); opacity: 0.8; }
 }
 
-/* Mini-map popup in shift log */
+/* Mini-map popup in shift log — positioned via JS (position:fixed inline).
+   Lives in <body> so it escapes the sticky-thead stacking context that previously occluded it. */
 .minimap-popup {
-  position: absolute;
-  z-index: 1000;
+  z-index: 9999;
   background: var(--card-bg, #fff);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
   padding: 4px;
   overflow: hidden;
-  right: 0;
-  top: -210px;
 }
 .minimap-popup .leaflet-container {
   border-radius: 10px;
@@ -1411,60 +1409,228 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 /* ===== Dashboard Tab ===== */
 
-.dash-period-row {
+/* ==========================================================================
+   Period bar — Switch-panel ops aesthetic to match Employees tab.
+   Pills replace dropdown; date label stepper with arrows; today-progress under label.
+   ========================================================================== */
+.period-bar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 20px;
+  gap: 14px;
+  padding: 10px 12px;
+  margin-bottom: 18px;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.012));
   flex-wrap: wrap;
 }
 
-.dash-period-label {
-  font-size: 14px;
+.period-bar-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.5px;
+  color: var(--text-dim);
+  padding-right: 4px;
+  border-right: 1px solid var(--border);
+  margin-right: 2px;
+}
+
+.period-pills {
+  display: inline-flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  font-family: var(--mono);
+}
+
+.period-pill {
+  background: transparent;
+  color: var(--text-dim);
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 6px 11px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  font-family: inherit;
+}
+
+.period-pill:last-child {
+  border-right: none;
+}
+
+.period-pill:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+}
+
+.period-pill.is-active {
+  color: #fbbf24;
+  font-weight: 800;
+  text-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
+  box-shadow: inset 0 -2px 0 0 #f59e0b;
+  background: rgba(245, 158, 11, 0.06);
+}
+
+.period-pill.is-active:hover {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.period-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.period-arrow {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+  font-family: var(--mono);
+}
+
+.period-arrow:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.period-label-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 220px;
+  padding: 0 12px;
+}
+
+.period-label {
+  font-family: var(--mono);
+  font-size: 13px;
   font-weight: 700;
   color: var(--text);
-  font-family: var(--mono);
-  padding: 6px 12px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  min-width: 200px;
-  text-align: center;
-}
-
-.period-type-label {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-dim);
+  letter-spacing: 1.5px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  line-height: 1.1;
 }
 
-.period-type-label select {
-  padding: 6px 10px;
-  font-size: 13px;
+.period-progress {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  margin-top: 5px;
+  background: var(--border);
+  border-radius: 0;
+  overflow: hidden;
+}
+
+.period-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--text-dim);
+  transition: width 0.3s ease;
+}
+
+.period-progress-fill[data-state="inside"] {
+  background: linear-gradient(90deg, #818cf8, #f59e0b);
+  box-shadow: 0 0 4px rgba(245, 158, 11, 0.4);
+}
+
+.period-jump-btn {
+  background: transparent;
+  border: 1px solid #f59e0b;
+  color: #f59e0b;
+  padding: 6px 11px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: all 0.15s ease;
+}
+
+.period-jump-btn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  color: #fbbf24;
+}
+
+.period-custom {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+}
+
+.period-custom input[type="date"] {
+  padding: 5px 8px;
+  font-size: 12px;
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 3px;
+  font-family: var(--mono);
+  color-scheme: dark;
+}
+
+.period-custom-sep {
+  color: var(--text-dim);
+}
+
+.period-custom-apply {
+  background: var(--text);
+  color: var(--bg);
+  border: none;
+  padding: 6px 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
   cursor: pointer;
-  font-family: inherit;
-  text-transform: none;
-  letter-spacing: 0;
-  font-weight: 400;
+  border-radius: 3px;
 }
 
-.period-type-label select:hover {
-  border-color: var(--border-active);
+.period-custom-apply:hover {
+  opacity: 0.85;
 }
 
-#custom-period-controls {
-  display: flex;
-  gap: 6px;
-  align-items: center;
+@media (max-width: 720px) {
+  .period-bar {
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .period-bar-label {
+    display: none;
+  }
+
+  .period-label-wrap {
+    min-width: 0;
+    flex: 1 0 100%;
+    order: 3;
+    padding: 0;
+  }
+
+  .period-pill {
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .period-stepper {
+    flex: 1;
+    justify-content: center;
+  }
 }
 
 #custom-period-controls input[type="date"] {
@@ -1694,6 +1860,11 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   background: linear-gradient(90deg, #ec4899, #ff6b9a);
 }
 
+.week-progress-fill.cap {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.5);
+}
+
 .week-progress-text {
   font-family: var(--mono);
   font-size: 11px;
@@ -1844,26 +2015,283 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   border-bottom: 1px solid var(--border);
 }
 
-.emp-card {
+/* ==========================================================================
+   Employees tab — "Switch Panel" layout
+   Ops-console aesthetic: dense rows, mono data, ⨯⨯ markers for unset config,
+   warehouse blocks separated by double-rule headers.
+   ========================================================================== */
+
+.emp-wh-group {
+  margin-bottom: 22px;
+}
+
+.emp-wh-header {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 14px 16px;
+  gap: 12px;
+  padding: 6px 0 8px;
+  border-top: 3px double var(--border);
+  border-bottom: 3px double var(--border);
+  margin-bottom: 4px;
+}
+
+.emp-wh-name {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+  padding: 4px 10px;
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 2px;
+}
+
+.emp-wh-counter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+.emp-wh-counter-total {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.emp-wh-counter-sep {
+  color: var(--text-dim);
+  opacity: 0.5;
+}
+
+.emp-wh-counter-set {
+  color: var(--text-dim);
+}
+
+.emp-wh-counter-divider {
+  color: var(--text-dim);
+  opacity: 0.4;
+  margin: 0 2px;
+}
+
+.emp-wh-counter-warn {
+  color: #f59e0b;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.emp-wh-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Row --- */
+.emp-row {
+  display: grid;
+  grid-template-columns: auto 200px auto 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
-  transition: border-color var(--transition-med), transform var(--transition-med);
-  margin-bottom: 6px;
+  position: relative;
+  transition: background 0.12s ease;
 }
 
-.emp-card .emp-card-name {
-  flex: 1 1 auto;
-  min-width: 0;
+.emp-row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: transparent;
+  transition: background 0.15s ease;
 }
 
-.emp-card .emp-progress-wrap {
-  flex: 0 0 80px;
+.emp-row:hover {
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.emp-row:hover::before {
+  background: var(--text-dim);
+}
+
+.emp-row-unset::before {
+  background: #f59e0b;
+}
+
+.emp-row-unset:hover::before {
+  background: #fbbf24;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+.emp-row-inactive {
+  opacity: 0.5;
+}
+
+.emp-row-status {
+  font-size: 14px;
+  width: 14px;
+  text-align: center;
+  color: var(--text-dim);
+  line-height: 1;
+}
+
+.emp-row-working .emp-row-status {
+  color: var(--green);
+  text-shadow: 0 0 6px var(--green);
+}
+
+.emp-row-name {
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 13.5px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emp-row-divider {
+  color: var(--text-dim);
+  opacity: 0.3;
+  font-weight: 200;
+  user-select: none;
+}
+
+.emp-row-config {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  letter-spacing: 0.5px;
+}
+
+.emp-cfg-sep {
+  color: var(--text-dim);
+  opacity: 0.4;
+  font-size: 10px;
+  user-select: none;
+}
+
+.emp-cfg {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.emp-cfg-type-w2 {
+  color: #818cf8;
+}
+
+.emp-cfg-type-1099 {
+  color: #f59e0b;
+}
+
+.emp-cfg-period,
+.emp-cfg-threshold {
+  color: var(--text);
+  opacity: 0.85;
+}
+
+.emp-cfg-rate {
+  color: var(--green);
+}
+
+.emp-cfg-rate-unset {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+.emp-cfg-unset {
+  color: #f59e0b;
+  font-weight: 700;
+  letter-spacing: 1px;
+  font-size: 13px;
+}
+
+.emp-row-active {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+.emp-row-active-on {
+  color: var(--green);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.emp-row-active-off {
+  color: var(--text-dim);
+}
+
+.emp-row-edit {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 8px;
+  min-width: 32px;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s ease;
+}
+
+.emp-row-edit:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--text-dim);
+}
+
+.emp-row-edit-warn {
+  color: #f59e0b;
+  border-color: rgba(245, 158, 11, 0.4);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 4px 10px;
+}
+
+.emp-row-edit-warn:hover {
+  background: rgba(245, 158, 11, 0.1);
+  border-color: #f59e0b;
+  color: #fbbf24;
+}
+
+@media (max-width: 720px) {
+  .emp-row {
+    grid-template-columns: auto 1fr auto auto;
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      "status name active edit"
+      ".      config config config";
+    row-gap: 6px;
+  }
+
+  .emp-row-status { grid-area: status; }
+  .emp-row-name { grid-area: name; }
+  .emp-row-active { grid-area: active; }
+  .emp-row-edit { grid-area: edit; }
+  .emp-row-config { grid-area: config; flex-wrap: wrap; }
+
+  .emp-row-divider { display: none; }
+
+  .emp-wh-name {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+  }
 }
 
 .emp-stat-ot .emp-stat-value {
@@ -1873,6 +2301,14 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .emp-stat-ot .emp-stat-label {
   color: #ff6b9a;
   font-weight: 700;
+}
+
+.dash-card-fraction {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-dim);
+  margin-left: 4px;
+  letter-spacing: 0.3px;
 }
 
 .dash-card-sub {
@@ -2377,5 +2813,302 @@ tr.row-overtime td {
 
   .dash-daily {
     gap: 3px;
+  }
+}
+
+/* ==========================================================================
+   Dashboard v3 — 3-section layout (Right Now / Pay Period Status / Heat Map)
+   ========================================================================== */
+
+.dash-section-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-dim);
+  margin-left: 8px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* --- Pay Period Status table --- */
+.dash-period-table {
+  margin-top: 12px;
+  overflow-x: auto;
+}
+
+.dash-pp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.dash-pp-table th,
+.dash-pp-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.dash-pp-table th {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.dash-pp-col-progress {
+  width: 30%;
+  min-width: 220px;
+}
+
+.dash-pp-row {
+  transition: background 0.15s ease;
+}
+
+.dash-pp-row:hover {
+  background: var(--bg-hover, rgba(255, 255, 255, 0.03));
+}
+
+.dash-pp-zone-cap {
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.dash-pp-zone-ot {
+  background: rgba(236, 72, 153, 0.06);
+}
+
+.dash-pp-zone-near {
+  background: rgba(245, 158, 11, 0.05);
+}
+
+.dash-pp-name a {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.dash-pp-name a:hover {
+  color: var(--accent-blue, #818cf8);
+  text-decoration: underline;
+}
+
+.dash-pp-hours-num {
+  font-family: var(--mono);
+  font-weight: 600;
+}
+
+.dash-pp-pay {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.dash-pp-bar {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  background: var(--bg-darker, rgba(255, 255, 255, 0.06));
+  border-radius: 5px;
+  overflow: visible;
+}
+
+.dash-pp-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.4s ease;
+}
+
+.dash-pp-fill-ok {
+  background: linear-gradient(90deg, #6366f1, #818cf8);
+}
+
+.dash-pp-fill-near {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24);
+}
+
+.dash-pp-fill-ot {
+  background: linear-gradient(90deg, #ec4899, #ff6b9a);
+}
+
+.dash-pp-fill-cap {
+  background: linear-gradient(90deg, #dc2626, #ef4444);
+  box-shadow: 0 0 6px rgba(220, 38, 38, 0.5);
+}
+
+.dash-pp-marker {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.4;
+  transform: translateX(-1px);
+}
+
+.dash-pp-bar-label {
+  display: block;
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+.dash-pp-bar-mark {
+  opacity: 0.6;
+}
+
+.dash-pp-forecast .dash-pp-fc-num {
+  font-family: var(--mono);
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.dash-pp-forecast .dash-pp-fc-basis {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.dash-pp-forecast.fc-ot .dash-pp-fc-num {
+  color: #ec4899;
+}
+
+.dash-pp-forecast.fc-cap .dash-pp-fc-num {
+  color: #dc2626;
+}
+
+.dash-pp-status {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.dash-pp-zone-cap .dash-pp-status { color: #ef4444; }
+.dash-pp-zone-ot .dash-pp-status { color: #ec4899; }
+.dash-pp-zone-near .dash-pp-status { color: #f59e0b; }
+
+/* --- Heat map --- */
+.dash-heatmap {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.dash-hm-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px 4px 6px;
+  background: var(--bg-darker, rgba(255, 255, 255, 0.04));
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-height: 88px;
+  transition: transform 0.15s ease;
+}
+
+.dash-hm-cell:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent-blue, #6366f1);
+}
+
+.dash-hm-heat {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.dash-hm-today {
+  outline: 2px solid var(--accent-blue, #818cf8);
+  outline-offset: -2px;
+}
+
+.dash-hm-past {
+  opacity: 0.85;
+}
+
+.dash-hm-day {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.dash-hm-date {
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--mono);
+  margin-bottom: 6px;
+}
+
+.dash-hm-bars {
+  position: relative;
+  width: 22px;
+  height: 36px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  margin: 4px 0;
+}
+
+.dash-hm-planned,
+.dash-hm-actual {
+  flex: 1;
+  border-radius: 2px 2px 0 0;
+  min-height: 1px;
+  transition: height 0.4s ease;
+}
+
+.dash-hm-planned {
+  background: var(--text-dim);
+  opacity: 0.45;
+}
+
+.dash-hm-actual {
+  background: linear-gradient(180deg, #818cf8, #6366f1);
+}
+
+.dash-hm-heat .dash-hm-actual {
+  background: linear-gradient(180deg, #fbbf24, #f59e0b);
+}
+
+.dash-hm-hours {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text);
+  margin-top: 2px;
+}
+
+.dash-hm-planned-label {
+  color: var(--text-dim);
+}
+
+@media (max-width: 700px) {
+  .dash-pp-table {
+    font-size: 12px;
+  }
+
+  .dash-pp-table th,
+  .dash-pp-table td {
+    padding: 6px 6px;
+  }
+
+  .dash-pp-bar-mark {
+    display: none;
+  }
+
+  .dash-heatmap {
+    grid-template-columns: repeat(auto-fit, minmax(48px, 1fr));
+    gap: 4px;
+  }
+
+  .dash-hm-cell {
+    min-height: 76px;
+    padding: 6px 2px 4px;
   }
 }

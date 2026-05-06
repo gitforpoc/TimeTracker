@@ -483,11 +483,26 @@ export function attachGeoPopups() {
       // Remove existing popup
       document.querySelectorAll(".minimap-popup").forEach((p) => p.remove());
 
+      // Append to <body> with position:fixed so it escapes table overflow + sticky-thead
+      // stacking context. Popup floats above all chrome.
       const popup = document.createElement("div");
       popup.className = "minimap-popup";
       popup.innerHTML = `<div id="minimap-${shiftId}" style="width:300px;height:200px;"></div><button class="minimap-close">✕</button>`;
-      el.parentElement.style.position = "relative";
-      el.parentElement.appendChild(popup);
+      document.body.appendChild(popup);
+
+      // Position relative to the clicked icon. Try above-right; flip below if not enough space.
+      const POPUP_W = 308; // ≈ map 300 + padding
+      const POPUP_H = 208;
+      const rect = el.getBoundingClientRect();
+      const margin = 8;
+      let left = rect.right - POPUP_W;
+      if (left < margin) left = margin;
+      if (left + POPUP_W > window.innerWidth - margin) left = window.innerWidth - POPUP_W - margin;
+      let top = rect.top - POPUP_H - 6;
+      if (top < margin) top = rect.bottom + 6; // not enough room above → flip below
+      popup.style.position = "fixed";
+      popup.style.left = `${left}px`;
+      popup.style.top = `${top}px`;
 
       const mm = L.map(`minimap-${shiftId}`, { zoomControl: false, attributionControl: false })
         .setView([geo.lat, geo.lng], 15);
@@ -508,10 +523,24 @@ export function attachGeoPopups() {
 
       setTimeout(() => mm.invalidateSize(), 100);
 
-      popup.querySelector(".minimap-close").addEventListener("click", () => {
+      // Tear down on close button, scroll, resize, or outside click — popup stays anchored to a
+      // fixed point so any movement should dismiss it.
+      const cleanup = () => {
+        if (!popup.isConnected) return;
         mm.remove();
         popup.remove();
-      });
+        document.removeEventListener("scroll", cleanup, true);
+        window.removeEventListener("resize", cleanup);
+        document.removeEventListener("mousedown", onOutside, true);
+      };
+      const onOutside = (ev) => {
+        if (!popup.contains(ev.target) && ev.target !== el) cleanup();
+      };
+      popup.querySelector(".minimap-close").addEventListener("click", cleanup);
+      document.addEventListener("scroll", cleanup, true);
+      window.addEventListener("resize", cleanup);
+      // Defer outside-click handler so this very click doesn't immediately close it
+      setTimeout(() => document.addEventListener("mousedown", onOutside, true), 0);
     });
   });
 }

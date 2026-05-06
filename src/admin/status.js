@@ -1,6 +1,7 @@
 import { state } from "./state.js";
 import { $, esc, calcDuration, formatDateISO } from "./helpers.js";
-import { getWorkWeekStart } from "../payPeriods.js";
+import { getBiWeeklyPeriod, effectiveShiftMinutes } from "../payPeriods.js";
+import { SOFT_CAP_HOURS } from "../constants.js";
 
 // --- Live Status ---
 export async function loadStatus() {
@@ -10,16 +11,18 @@ export async function loadStatus() {
   table.style.opacity = "0.4";
 
   const now = new Date();
-  const weekStart = getWorkWeekStart(now);
-  const weekStartISO = formatDateISO(weekStart);
+  const period = getBiWeeklyPeriod(now);
+  const periodStartISO = formatDateISO(period.start);
+  const periodEndISO = formatDateISO(period.end);
 
-  const [statusResult, weekShiftsResult, settingsResult] = await Promise.all([
+  const [statusResult, periodShiftsResult, settingsResult] = await Promise.all([
     state.supabase.rpc("tt_get_user_statuses"),
     state.supabase
       .from("tt_shifts")
       .select("user_name, clock_in, clock_out, duration_minutes, type")
       .eq("type", "work")
-      .gte("clock_in", `${weekStartISO}T00:00:00`)
+      .gte("clock_in", `${periodStartISO}T00:00:00`)
+      .lte("clock_in", `${periodEndISO}T23:59:59`)
       .limit(2000),
     state.employeeSettings && state.employeeSettings.length > 0
       ? Promise.resolve({ data: state.employeeSettings })
@@ -35,21 +38,16 @@ export async function loadStatus() {
   }
 
   const data = statusResult.data;
-  const weekShifts = weekShiftsResult.data || [];
+  const periodShifts = periodShiftsResult.data || [];
   const settings = settingsResult.data || [];
   state.employeeSettings = settings;
 
-  // Sum week hours per employee. Open shifts (no clock_out): count time elapsed since clock_in.
-  const weekMinByName = {};
-  weekShifts.forEach((s) => {
-    if (!weekMinByName[s.user_name]) weekMinByName[s.user_name] = 0;
-    if (s.clock_out) {
-      weekMinByName[s.user_name] += s.duration_minutes || 0;
-    } else {
-      // Open shift — count elapsed minutes from clock_in to now
-      const elapsed = Math.max(0, (now - new Date(s.clock_in)) / 60000);
-      weekMinByName[s.user_name] += elapsed;
-    }
+  // Sum pay-period hours per employee. effectiveShiftMinutes handles open shifts (counts elapsed
+  // for active shifts, returns 0 for stale forgotten ones >16h old to avoid runaway totals).
+  const periodMinByName = {};
+  periodShifts.forEach((s) => {
+    if (!periodMinByName[s.user_name]) periodMinByName[s.user_name] = 0;
+    periodMinByName[s.user_name] += effectiveShiftMinutes(s, now);
   });
 
   const settingsByName = {};
@@ -102,25 +100,31 @@ export async function loadStatus() {
         else durationClass = "duration-green";
       }
 
-      // Week-so-far cell
+      // Pay-period-so-far cell. Progress bar runs 0 → threshold (80h) → soft cap (120h).
+      // Color escalates: green <60% of threshold, near (yellow) ≥75%, over (orange) past threshold,
+      // cap (red) past soft cap.
       const empSettings = settingsByName[u.user_name];
       const empType = empSettings?.employment_type;
       const typeBadge = empType ? `<span class="status-type-badge type-${empType.toLowerCase()}">${esc(empType)}</span>` : "";
-      const weekMin = weekMinByName[u.user_name] || 0;
-      const weekH = Math.round(weekMin / 60 * 10) / 10;
-      const threshold = empSettings?.overtime_threshold || 40;
-      let weekCell;
+      const periodMin = periodMinByName[u.user_name] || 0;
+      const periodH = Math.round(periodMin / 60 * 10) / 10;
+      const threshold = empSettings?.overtime_threshold || 80;
+      let periodCell;
       if (empType === "W2") {
-        const pct = Math.min(150, Math.round((weekH / threshold) * 100));
-        const barClass = weekH > threshold ? "over" : weekH >= threshold - 5 ? "near" : "";
-        weekCell = `<div class="week-progress">
-          <div class="week-progress-bar"><div class="week-progress-fill ${barClass}" style="width:${Math.min(100, pct)}%"></div></div>
-          <span class="week-progress-text">${weekH}h / ${threshold}h</span>
+        // Bar fills from 0 to soft cap (120h). At soft cap = 100% width.
+        const pct = Math.min(100, Math.round((periodH / SOFT_CAP_HOURS) * 100));
+        let barClass = "";
+        if (periodH > SOFT_CAP_HOURS) barClass = "cap";
+        else if (periodH > threshold) barClass = "over";
+        else if (periodH >= threshold * 0.875) barClass = "near"; // ≥70h on 80h threshold
+        periodCell = `<div class="week-progress">
+          <div class="week-progress-bar"><div class="week-progress-fill ${barClass}" style="width:${pct}%"></div></div>
+          <span class="week-progress-text">${periodH}h / ${threshold}h</span>
         </div>`;
-      } else if (weekMin > 0) {
-        weekCell = `<span class="week-simple">${weekH}h</span>`;
+      } else if (periodMin > 0) {
+        periodCell = `<span class="week-simple">${periodH}h</span>`;
       } else {
-        weekCell = "—";
+        periodCell = "—";
       }
 
       return `<tr class="${statusClass}">
@@ -128,7 +132,7 @@ export async function loadStatus() {
         <td><span class="dot ${statusClass}"></span> ${statusText}</td>
         <td>${u.local_string || "—"}</td>
         <td class="${durationClass}">${duration}</td>
-        <td>${weekCell}</td>
+        <td>${periodCell}</td>
       </tr>`;
     })
     .join("");

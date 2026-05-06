@@ -69,46 +69,52 @@
         <button class="tab" data-tab="map">Map</button>
       </nav>
 
-      <!-- Global period bar — applies to Dashboard and Employees tabs only.
-           Shift Log has its own date filters; Live and Map are real-time. -->
-      <div id="global-period-bar" class="dash-period-row">
-        <label class="period-type-label">
-          Period
-          <select id="period-type-select">
-            <option value="bi_weekly">Bi-weekly (Thu → Wed)</option>
-            <option value="semi_monthly">Semi-monthly (1-15 / 16-end)</option>
-            <option value="weekly">Weekly (Mon → Sun)</option>
-            <option value="custom">Custom…</option>
-          </select>
-        </label>
-        <button id="dash-prev" class="btn-sm">← Prev</button>
-        <span id="dash-period-label" class="dash-period-label"></span>
-        <button id="dash-next" class="btn-sm">Next →</button>
-        <span id="custom-period-controls" class="hidden">
-          <input type="date" id="custom-start" />
-          <input type="date" id="custom-end" />
-          <button id="custom-apply" class="btn-sm">Apply</button>
-        </span>
+      <!-- Global period bar — Dashboard, Employees, and Shift Log share period state.
+           In Shift Log, period selection auto-fills the From/To inputs; manual edits override. -->
+      <div id="global-period-bar" class="period-bar">
+        <div class="period-bar-label">PERIOD</div>
+        <div class="period-pills" role="tablist" aria-label="Pay period type">
+          <button class="period-pill" data-period="semi_monthly" role="tab" aria-selected="false">SEMI</button>
+          <button class="period-pill" data-period="bi_weekly" role="tab" aria-selected="true">BIWK</button>
+          <button class="period-pill" data-period="weekly" role="tab" aria-selected="false">WKLY</button>
+          <button class="period-pill" data-period="custom" role="tab" aria-selected="false">CUSTOM</button>
+        </div>
+        <div class="period-stepper">
+          <button id="dash-prev" class="period-arrow" aria-label="Previous period">◂</button>
+          <div class="period-label-wrap">
+            <div id="dash-period-label" class="period-label"></div>
+            <div class="period-progress" aria-hidden="true">
+              <div id="period-progress-fill" class="period-progress-fill"></div>
+            </div>
+          </div>
+          <button id="dash-next" class="period-arrow" aria-label="Next period">▸</button>
+        </div>
+        <button id="period-jump-now" class="period-jump-btn hidden" title="Jump to current period">→ NOW</button>
+        <div id="custom-period-controls" class="period-custom hidden">
+          <input type="date" id="custom-start" aria-label="Custom start date" />
+          <span class="period-custom-sep" aria-hidden="true">—</span>
+          <input type="date" id="custom-end" aria-label="Custom end date" />
+          <button id="custom-apply" class="period-custom-apply">APPLY</button>
+        </div>
       </div>
 
-      <!-- Dashboard tab -->
+      <!-- Dashboard tab — 3 sections: Right Now, Pay Period Status, Period Heat Map -->
       <section id="tab-dashboard" class="tab-content active-tab">
-        <div id="dash-cards" class="dash-cards"></div>
         <div class="dash-section">
-          <h3 class="dash-section-title">Hours by Employee</h3>
-          <div id="dash-bars" class="dash-bars"></div>
-        </div>
-        <div class="dash-section">
-          <h3 class="dash-section-title">Daily Activity</h3>
-          <div id="dash-daily" class="dash-daily"></div>
-        </div>
-        <div class="dash-section">
-          <h3 class="dash-section-title">Alerts</h3>
+          <h3 class="dash-section-title">Right Now</h3>
+          <div id="dash-now" class="dash-cards"></div>
           <div id="dash-alerts" class="dash-alerts"></div>
         </div>
+
         <div class="dash-section">
-          <h3 class="dash-section-title">Warehouse Orders</h3>
-          <div class="dash-placeholder">Coming soon — WMS integration</div>
+          <h3 class="dash-section-title">Pay Period Status <span class="dash-section-hint">Per employee — current period 80h target, 120h soft cap</span></h3>
+          <div id="dash-cards" class="dash-cards"></div>
+          <div id="dash-period-table" class="dash-period-table"></div>
+        </div>
+
+        <div class="dash-section">
+          <h3 class="dash-section-title">Period Heat Map <span class="dash-section-hint">Planned vs actual hours by day</span></h3>
+          <div id="dash-heatmap" class="dash-heatmap"></div>
         </div>
       </section>
 
@@ -130,11 +136,6 @@
           <div class="emp-section">
             <h4 class="emp-section-title">Summary <span class="emp-section-hint" id="emp-detail-period"></span></h4>
             <div id="emp-detail-cards" class="dash-cards"></div>
-          </div>
-
-          <div class="emp-section emp-section-week" id="emp-detail-week-wrap" style="display:none;">
-            <h4 class="emp-section-title">Weekly Overtime Breakdown <span class="emp-section-hint">FLSA workweek Thu–Wed, &gt;40h = 1.5×</span></h4>
-            <div id="emp-detail-week"></div>
           </div>
 
           <div class="emp-section" id="emp-detail-edits-wrap" style="display:none;">
@@ -166,7 +167,7 @@
               <th>Status</th>
               <th>Since</th>
               <th>Duration</th>
-              <th>Workweek (Thu–Now)</th>
+              <th>Pay Period (so far / 80h)</th>
             </tr>
           </thead>
           <tbody id="status-body"></tbody>

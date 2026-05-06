@@ -1,6 +1,6 @@
 import { state, isAdmin } from "./state.js";
 import { $, $$, esc, formatDateISO, formatDateShort, formatTimeShort, showToast } from "./helpers.js";
-import { calculateWeeklyOvertime } from "../payPeriods.js";
+import { calculatePeriodOvertime } from "../payPeriods.js";
 
 function minsToHm(min) {
   const h = Math.floor(min / 60);
@@ -67,20 +67,15 @@ function renderEditsList(edits, shiftsById) {
   host.innerHTML = html;
 }
 
-// Compute reg/OT split for an employee across the visible period.
+// Compute reg/OT split for an employee across the visible pay period.
 // Returns null if employee is not active W2 (OT only applies to active W2 employees).
 function computeOvertimeFor(name, shifts, employeeSettings, periodStart, periodEnd) {
   const settings = employeeSettings.find((e) => e.user_name === name);
   if (!settings || settings.employment_type !== "W2") return null;
   if (settings.active === false) return null; // soft-deleted employees: skip OT/payroll
-  const threshold = settings.overtime_threshold || 40;
-  const allBuckets = calculateWeeklyOvertime(shifts, threshold);
-  const buckets = (periodStart && periodEnd)
-    ? allBuckets.filter((b) => b.weekEnd >= periodStart && b.weekStart <= periodEnd)
-    : allBuckets;
-  const totalReg = buckets.reduce((sum, b) => sum + b.regMin, 0);
-  const totalOt = buckets.reduce((sum, b) => sum + b.otMin, 0);
-  return { regMin: totalReg, otMin: totalOt, threshold, buckets };
+  const threshold = settings.overtime_threshold || 80;
+  const { regMin, otMin, totalMin } = calculatePeriodOvertime(shifts, threshold, periodStart, periodEnd);
+  return { regMin, otMin, totalMin, threshold };
 }
 
 // --- Employees Tab ---
@@ -157,64 +152,93 @@ export async function loadEmployeesTab() {
   const listEl = $("#emp-list");
   let html = "";
 
+  // Switch-panel render: dense ops-console rows grouped by warehouse, with ⨯⨯ markers
+  // for unconfigured fields (the visual primary signal that someone needs setup).
+  const PERIOD_SHORT = { bi_weekly: "BIWK", semi_monthly: "SEMI", weekly: "WK" };
+  const UNSET = '<span class="emp-cfg-unset">⨯⨯</span>';
+
   const sortedGroups = Object.keys(groups).sort();
   sortedGroups.forEach((wh) => {
     if (filterWh && filterWh !== wh) return;
-    html += `<div class="emp-wh-group"><div class="emp-wh-header">${esc(wh)}</div>`;
-    groups[wh].forEach((name) => {
-      const stats = empStats[name] || { hours: 0, shifts: 0, workShifts: 0 };
-      const totalH = Math.round(stats.hours / 60);
-      const avg = stats.workShifts > 0 ? Math.round(stats.hours / stats.workShifts / 60 * 10) / 10 : 0;
-      const target = stats.workShifts * 480; // 8h per shift
-      const pct = target > 0 ? Math.min(150, Math.round((stats.hours / target) * 100)) : 0;
-      const isWorking = state.workingNames.includes(name);
-      const progressClass = pct > 120 ? "way-over" : pct > 100 ? "over" : "";
 
+    // Count set vs warn per warehouse for the header chip.
+    const total = groups[wh].length;
+    const setCount = groups[wh].filter((n) => {
+      const s = state.employeeSettings.find((e) => e.user_name === n);
+      return s && s.employment_type;
+    }).length;
+    const warnCount = total - setCount;
+
+    html += `<section class="emp-wh-group">
+      <header class="emp-wh-header">
+        <h3 class="emp-wh-name">${esc(wh)}</h3>
+        <div class="emp-wh-counter">
+          <span class="emp-wh-counter-total">${total}</span>
+          <span class="emp-wh-counter-sep">▸</span>
+          <span class="emp-wh-counter-set">${setCount} cfg</span>
+          ${warnCount > 0 ? `<span class="emp-wh-counter-divider">│</span><span class="emp-wh-counter-warn">${warnCount} ⚠</span>` : ""}
+        </div>
+      </header>
+      <div class="emp-wh-rows">`;
+
+    groups[wh].forEach((name) => {
+      const isWorking = state.workingNames.includes(name);
       const settings = state.employeeSettings.find((e) => e.user_name === name);
       const isInactive = settings && settings.active === false;
-      const empType = settings?.employment_type || "";
-      const typeBadge = empType ? `<span class="emp-type-badge emp-type-${empType.toLowerCase()}">${esc(empType)}</span>` : "";
+      const empType = settings?.employment_type || null;
+      const isUnset = !empType;
 
-      // Overtime: only W2, only if there's any OT in the visible period
-      const ot = computeOvertimeFor(name, empShifts[name] || [], state.employeeSettings, state.dashPeriod.start, state.dashPeriod.end);
-      let otBadge = "";
-      if (ot && ot.otMin > 0) {
-        const otH = Math.round(ot.otMin / 60 * 10) / 10;
-        // Pay info in tooltip: admin only
-        let payHint = "";
-        if (isAdmin() && settings?.rate) {
-          const otPay = (ot.otMin / 60) * Number(settings.rate) * 1.5;
-          payHint = ` ($${otPay.toFixed(0)})`;
-        }
-        otBadge = `<div class="emp-stat emp-stat-ot" title="Weekly hours over ${ot.threshold}h${payHint ? ` · 1.5× rate${payHint}` : ""}"><div class="emp-stat-value">${otH}h</div><div class="emp-stat-label">OT</div></div>`;
-      }
+      const typeCell = empType
+        ? `<span class="emp-cfg emp-cfg-type emp-cfg-type-${empType.toLowerCase()}">${esc(empType)}</span>`
+        : UNSET;
+      const periodCell = empType
+        ? `<span class="emp-cfg emp-cfg-period">${PERIOD_SHORT[settings?.pay_period_type] || "SEMI"}</span>`
+        : UNSET;
+      const thresholdCell = empType
+        ? `<span class="emp-cfg emp-cfg-threshold">${settings?.overtime_threshold || 80}h</span>`
+        : UNSET;
+      const rateCell = isAdmin() && settings?.rate
+        ? `<span class="emp-cfg emp-cfg-rate">$${settings.rate}</span>`
+        : `<span class="emp-cfg emp-cfg-rate-unset">$—</span>`;
 
-      html += `<div class="emp-card${isInactive ? " emp-inactive" : ""}" data-name="${esc(name)}">
-        <div class="emp-card-name"><span class="emp-status-dot ${isWorking ? "online" : "offline"}"></span>${esc(name)}${typeBadge}</div>
-        <div class="emp-stat"><div class="emp-stat-value">${totalH}h</div><div class="emp-stat-label">Hours</div></div>
-        ${otBadge}
-        <div class="emp-stat"><div class="emp-stat-value">${stats.shifts}</div><div class="emp-stat-label">Shifts</div></div>
-        <div class="emp-stat"><div class="emp-stat-value">${avg}h</div><div class="emp-stat-label">Avg</div></div>
-        <div class="emp-progress-wrap"><div class="emp-progress-bar"><div class="emp-progress-fill ${progressClass}" style="width:${Math.min(100, pct)}%"></div></div></div>
-        <button class="emp-edit-btn" data-edit-name="${esc(name)}" title="Edit employee settings" aria-label="Edit ${esc(name)}">&#9881;</button>
+      const editBtn = isUnset
+        ? `<button class="emp-row-edit emp-row-edit-warn" data-edit-name="${esc(name)}" title="Configure ${esc(name)}">⚠ CONFIGURE</button>`
+        : `<button class="emp-row-edit" data-edit-name="${esc(name)}" title="Edit ${esc(name)}" aria-label="Edit ${esc(name)}">⚙</button>`;
+
+      const rowClasses = ["emp-row"];
+      if (isUnset) rowClasses.push("emp-row-unset");
+      if (isInactive) rowClasses.push("emp-row-inactive");
+      if (isWorking) rowClasses.push("emp-row-working");
+
+      html += `<div class="${rowClasses.join(" ")}" data-name="${esc(name)}">
+        <span class="emp-row-status" aria-label="${isWorking ? "working" : "offline"}">${isWorking ? "▮" : "▯"}</span>
+        <span class="emp-row-name">${esc(name)}</span>
+        <span class="emp-row-divider" aria-hidden="true">│</span>
+        <span class="emp-row-config">
+          ${typeCell}<span class="emp-cfg-sep" aria-hidden="true">▪</span>${periodCell}<span class="emp-cfg-sep" aria-hidden="true">▪</span>${thresholdCell}<span class="emp-cfg-sep" aria-hidden="true">▪</span>${rateCell}
+        </span>
+        <span class="emp-row-divider" aria-hidden="true">│</span>
+        <span class="emp-row-active emp-row-active-${isInactive ? "off" : "on"}">${isInactive ? "OFF" : "ON"}</span>
+        ${editBtn}
       </div>`;
     });
-    html += "</div>";
+
+    html += "</div></section>";
   });
 
   listEl.innerHTML = html;
 
-  // Attach click handlers
-  listEl.querySelectorAll(".emp-card").forEach((card) => {
-    card.addEventListener("click", (e) => {
-      // Don't drill down if user clicked the edit button
-      if (e.target.closest(".emp-edit-btn")) return;
-      showEmployeeDetail(card.dataset.name);
+  // Row click → drill into employee detail (Day-by-Day, Edit History, etc.)
+  listEl.querySelectorAll(".emp-row").forEach((row) => {
+    row.addEventListener("click", (e) => {
+      // Don't drill down if user clicked the edit / configure button
+      if (e.target.closest(".emp-row-edit")) return;
+      showEmployeeDetail(row.dataset.name);
     });
   });
 
-  // Edit-button handlers (event delegation via direct binding to keep scope tight)
-  listEl.querySelectorAll(".emp-edit-btn").forEach((btn) => {
+  // Edit / configure button → open modal
+  listEl.querySelectorAll(".emp-row-edit").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       openEmployeeEditModal(btn.dataset.editName);
@@ -329,33 +353,7 @@ async function showEmployeeDetail(name) {
     $("#emp-detail-edits-wrap").style.display = "none";
   }
 
-  // Weekly breakdown — only meaningful when period spans 2+ workweeks
-  const weekWrap = $("#emp-detail-week-wrap");
-  const weekHost = $("#emp-detail-week");
-  if (ot && ot.buckets.length >= 2) {
-    // Pay column: admin only
-    const hasPay = isAdmin() && !!settings.rate;
-    let html = `<table class="emp-week-table"><thead><tr><th>Week of</th><th>Total</th><th>Regular</th><th>Overtime</th>${hasPay ? "<th>Pay</th>" : ""}</tr></thead><tbody>`;
-    ot.buckets.forEach((b) => {
-      const totalHs = minsToHm(b.totalMin);
-      const regHs = minsToHm(b.regMin);
-      const otHs = b.otMin > 0 ? minsToHm(b.otMin) : "—";
-      const otClass = b.otMin > 0 ? "ot-positive" : "";
-      let payCell = "";
-      if (hasPay) {
-        const reg = (b.regMin / 60) * Number(settings.rate);
-        const otPay = (b.otMin / 60) * Number(settings.rate) * 1.5;
-        payCell = `<td>$${(reg + otPay).toFixed(0)}</td>`;
-      }
-      html += `<tr class="${otClass}"><td>${b.weekStart.toLocaleDateString("en-US", { month: "short", day: "numeric" })}</td><td>${totalHs}</td><td>${regHs}</td><td>${otHs}</td>${payCell}</tr>`;
-    });
-    html += "</tbody></table>";
-    weekHost.innerHTML = html;
-    weekWrap.style.display = "";
-  } else {
-    weekWrap.style.display = "none";
-    weekHost.innerHTML = "";
-  }
+  // (Weekly breakdown removed — company computes OT per pay period, not per workweek.)
 
   // Day-by-day table
   const shiftsByDate = {};
@@ -473,7 +471,7 @@ function readEmpEditForm() {
     employment_type: $("#emp-edit-employment-type").value || null,
     rate: rateRaw === "" ? null : Number(rateRaw),
     pay_period_type: $("#emp-edit-pay-period").value,
-    overtime_threshold: Number($("#emp-edit-ot-threshold").value) || 40,
+    overtime_threshold: Number($("#emp-edit-ot-threshold").value) || 80,
     active: $("#emp-edit-active").checked,
   };
 }
@@ -486,7 +484,7 @@ function openEmployeeEditModal(name) {
   $("#emp-edit-employment-type").value = settings.employment_type || "";
   $("#emp-edit-rate").value = settings.rate != null ? settings.rate : "";
   $("#emp-edit-pay-period").value = settings.pay_period_type || "semi_monthly";
-  $("#emp-edit-ot-threshold").value = settings.overtime_threshold != null ? settings.overtime_threshold : 40;
+  $("#emp-edit-ot-threshold").value = settings.overtime_threshold != null ? settings.overtime_threshold : 80;
   $("#emp-edit-active").checked = settings.active !== false; // default true if missing
 
   // Hide rate field for supervisors — admin-only data

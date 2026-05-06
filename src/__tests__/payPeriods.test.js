@@ -5,6 +5,8 @@ import {
   getWeekKey,
   groupShiftsByWeek,
   calculateWeeklyOvertime,
+  calculatePeriodOvertime,
+  effectiveShiftMinutes,
   totalOvertimeMinutes,
   getSemiMonthlyPeriod,
   getBiWeeklyPeriod,
@@ -82,7 +84,7 @@ describe("overtime calculation (Thu-Wed workweek)", () => {
     expect(totalOvertimeMinutes(shifts)).toBe(0);
   });
 
-  it("hours over threshold counted as OT", () => {
+  it("hours over threshold counted as OT (explicit 40h threshold for weekly calc)", () => {
     const shifts = [
       { clock_in: new Date(2026, 3, 30), duration_minutes: 9 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 1), duration_minutes: 9 * 60, type: "work" },
@@ -90,8 +92,8 @@ describe("overtime calculation (Thu-Wed workweek)", () => {
       { clock_in: new Date(2026, 4, 5), duration_minutes: 9 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 6), duration_minutes: 9 * 60, type: "work" },
     ];
-    // 45h - 40h = 5h OT = 300 min
-    expect(totalOvertimeMinutes(shifts)).toBe(300);
+    // 45h - 40h = 5h OT = 300 min — pass 40 explicitly since DEFAULT_OVERTIME_THRESHOLD is now 80h/period
+    expect(totalOvertimeMinutes(shifts, 40)).toBe(300);
   });
 
   it("paid_off and day_off shifts do NOT count toward OT", () => {
@@ -119,7 +121,7 @@ describe("overtime calculation (Thu-Wed workweek)", () => {
       { clock_in: new Date(2026, 4, 8), duration_minutes: 10 * 60, type: "work" },
       { clock_in: new Date(2026, 4, 11), duration_minutes: 10 * 60, type: "work" },
     ];
-    const buckets = calculateWeeklyOvertime(shifts);
+    const buckets = calculateWeeklyOvertime(shifts, 40);
     expect(buckets).toHaveLength(2);
     expect(buckets[0].otMin).toBe(10 * 60); // 50 - 40 = 10h
     expect(buckets[1].otMin).toBe(0);
@@ -143,6 +145,132 @@ describe("overtime calculation (Thu-Wed workweek)", () => {
     expect(groups.size).toBe(2);
     expect(groups.get("2026-04-30")).toHaveLength(2);
     expect(groups.get("2026-05-07")).toHaveLength(1);
+  });
+});
+
+describe("effectiveShiftMinutes — guards against stale open shifts inflating totals", () => {
+  it("closed shift returns its duration", () => {
+    const shift = { clock_in: new Date(2026, 4, 5, 9), clock_out: new Date(2026, 4, 5, 17), duration_minutes: 480 };
+    expect(effectiveShiftMinutes(shift, new Date(2026, 4, 6))).toBe(480);
+  });
+
+  it("open shift within 16h returns elapsed minutes", () => {
+    const clockIn = new Date(2026, 4, 5, 9, 0); // 9 AM
+    const now = new Date(2026, 4, 5, 14, 0); // 2 PM, 5 hours later
+    const shift = { clock_in: clockIn, clock_out: null, duration_minutes: 0 };
+    expect(effectiveShiftMinutes(shift, now)).toBe(5 * 60);
+  });
+
+  it("stale open shift (>16h) returns 0 — supervisor likely forgot to clock out", () => {
+    const clockIn = new Date(2026, 4, 5, 9, 0);
+    const now = new Date(2026, 4, 6, 9, 30); // 24.5 hours later
+    const shift = { clock_in: clockIn, clock_out: null, duration_minutes: 0 };
+    expect(effectiveShiftMinutes(shift, now)).toBe(0);
+  });
+
+  it("exactly at 16h boundary returns elapsed (not stale yet)", () => {
+    const clockIn = new Date(2026, 4, 5, 0, 0);
+    const now = new Date(2026, 4, 5, 16, 0); // exactly 16h
+    const shift = { clock_in: clockIn, clock_out: null, duration_minutes: 0 };
+    expect(effectiveShiftMinutes(shift, now)).toBe(16 * 60);
+  });
+
+  it("Jairo's regression — open shift from 24h+ ago should not inflate period", () => {
+    // Reproduces the bug: shift opened 5/5 10:55, never closed, viewed days later.
+    // Without the cap, this would add ~150h to his period total.
+    const shift = { clock_in: new Date(2026, 4, 5, 10, 55), clock_out: null, duration_minutes: 0 };
+    const now = new Date(2026, 4, 11, 23, 25); // 6+ days later
+    expect(effectiveShiftMinutes(shift, now)).toBe(0);
+  });
+});
+
+describe("per-period overtime calculation (80h threshold, no weekly bucketing)", () => {
+  const periodStart = new Date(2026, 3, 30); // Thu Apr 30
+  const periodEnd = new Date(2026, 4, 13, 23, 59, 59, 999); // Wed May 13
+
+  it("zero shifts = zero everything", () => {
+    const r = calculatePeriodOvertime([], 80, periodStart, periodEnd);
+    expect(r).toEqual({ totalMin: 0, regMin: 0, otMin: 0 });
+  });
+
+  it("under 80h = no OT", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 40 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 5), duration_minutes: 39 * 60, type: "work" },
+    ];
+    const r = calculatePeriodOvertime(shifts, 80, periodStart, periodEnd);
+    expect(r.totalMin).toBe(79 * 60);
+    expect(r.regMin).toBe(79 * 60);
+    expect(r.otMin).toBe(0);
+  });
+
+  it("over 80h = OT applied once for the whole period", () => {
+    // 90h spread across many shifts in the period — would NOT be OT under per-week 40h calc
+    // (each week could be under 40h), but IS OT under per-period 80h.
+    const shifts = [
+      { clock_in: new Date(2026, 3, 30), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 4), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 5), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 6), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 7), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 8), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 11), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 12), duration_minutes: 7 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 13), duration_minutes: 9 * 60, type: "work" },
+    ];
+    const r = calculatePeriodOvertime(shifts, 80, periodStart, periodEnd);
+    expect(r.totalMin).toBe(72 * 60); // 9*7 + 9 = 72h
+    expect(r.otMin).toBe(0); // still under 80
+  });
+
+  it("90h period = 10h OT", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 50 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 8), duration_minutes: 40 * 60, type: "work" },
+    ];
+    const r = calculatePeriodOvertime(shifts, 80, periodStart, periodEnd);
+    expect(r.totalMin).toBe(90 * 60);
+    expect(r.regMin).toBe(80 * 60);
+    expect(r.otMin).toBe(10 * 60);
+  });
+
+  it("paid_off and day_off do NOT count toward period total", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 80 * 60, type: "work" },
+      { clock_in: new Date(2026, 4, 2), duration_minutes: 8 * 60, type: "paid_off" },
+      { clock_in: new Date(2026, 4, 3), duration_minutes: 8 * 60, type: "day_off" },
+    ];
+    const r = calculatePeriodOvertime(shifts, 80, periodStart, periodEnd);
+    expect(r.totalMin).toBe(80 * 60);
+    expect(r.otMin).toBe(0);
+  });
+
+  it("shifts outside the period window are excluded", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 3, 29), duration_minutes: 50 * 60, type: "work" }, // before
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 50 * 60, type: "work" }, // in
+      { clock_in: new Date(2026, 4, 14), duration_minutes: 50 * 60, type: "work" }, // after
+    ];
+    const r = calculatePeriodOvertime(shifts, 80, periodStart, periodEnd);
+    expect(r.totalMin).toBe(50 * 60);
+    expect(r.otMin).toBe(0);
+  });
+
+  it("custom threshold respected (e.g. 100h soft cap test)", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 110 * 60, type: "work" },
+    ];
+    const r = calculatePeriodOvertime(shifts, 100, periodStart, periodEnd);
+    expect(r.otMin).toBe(10 * 60);
+  });
+
+  it("default threshold is 80h when omitted", () => {
+    const shifts = [
+      { clock_in: new Date(2026, 4, 1), duration_minutes: 85 * 60, type: "work" },
+    ];
+    const r = calculatePeriodOvertime(shifts, undefined, periodStart, periodEnd);
+    expect(r.otMin).toBe(5 * 60);
   });
 });
 

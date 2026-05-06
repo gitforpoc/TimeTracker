@@ -46,5 +46,8 @@ export const BI_WEEKLY_ANCHOR = "2026-04-30";
 // To switch to traditional Mon-Sun, change to 1.
 export const WORKWEEK_START_DAY = 4; // Thursday
 
-// FLSA / NY / NJ standard: 40h/week threshold for overtime (W2 only).
-export const DEFAULT_OVERTIME_THRESHOLD = 40;
+// Overtime threshold — hours per PAY PERIOD (not per workweek), matching this company's actual payroll.
+// Bi-weekly period of 80h = anything over → 1.5× rate. Soft cap (warning only) at 120h.
+// Boss-confirmed 2026-05-05: company runs OT per pay period, not per FLSA workweek.
+export const DEFAULT_OVERTIME_THRESHOLD = 80;
+export const SOFT_CAP_HOURS = 120;

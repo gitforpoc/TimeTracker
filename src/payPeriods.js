@@ -116,6 +116,43 @@ export function totalOvertimeMinutes(shifts, threshold = DEFAULT_OVERTIME_THRESH
   return calculateWeeklyOvertime(shifts, threshold).reduce((sum, w) => sum + w.otMin, 0);
 }
 
+// Effective minutes for a single shift, accounting for currently-open shifts.
+// - Closed shift: returns duration_minutes.
+// - Open shift ≤ 16h old: returns elapsed minutes since clock_in (legitimate ongoing work).
+// - Open shift > 16h old: returns 0 (treat as forgotten clock-out, surfaced separately by alerts).
+//
+// 16h threshold accommodates long warehouse shifts (12-14h) without classifying them as stale,
+// while still catching shifts left open from a prior day.
+export const STALE_OPEN_SHIFT_HOURS = 16;
+export function effectiveShiftMinutes(shift, now = new Date()) {
+  if (shift.clock_out || shift.duration_minutes) return shift.duration_minutes || 0;
+  const elapsedMin = Math.max(0, (now - new Date(shift.clock_in)) / 60000);
+  if (elapsedMin > STALE_OPEN_SHIFT_HOURS * 60) return 0;
+  return elapsedMin;
+}
+
+// Per-pay-period OT calculation — sums all work shifts in the period and applies threshold ONCE.
+// This is the model the company actually uses (boss-confirmed 2026-05-05): "we calculate OT
+// per pay period, not per workweek". 80h threshold over a 14-day bi-weekly period.
+//
+// `periodStart` and `periodEnd` are Date objects; shifts outside the window are skipped.
+// If both are omitted, all shifts contribute (useful for ad-hoc sums).
+export function calculatePeriodOvertime(shifts, threshold = DEFAULT_OVERTIME_THRESHOLD, periodStart, periodEnd) {
+  const thresholdMin = threshold * 60;
+  let totalMin = 0;
+  for (const s of shifts) {
+    if (s.type && s.type !== "work") continue;
+    if (periodStart && periodEnd) {
+      const t = new Date(s.clock_in);
+      if (t < periodStart || t > periodEnd) continue;
+    }
+    totalMin += s.duration_minutes || 0;
+  }
+  const otMin = Math.max(0, totalMin - thresholdMin);
+  const regMin = totalMin - otMin;
+  return { totalMin, regMin, otMin };
+}
+
 // --- period boundaries ---
 
 // Semi-monthly: 1-15 or 16-end of month.
