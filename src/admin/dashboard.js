@@ -1,6 +1,6 @@
 import { state, isAdmin } from "./state.js";
-import { $, esc, formatDateISO, formatDateShort, formatTimeShort } from "./helpers.js";
-import { hideEmployeeDetail, loadEmployeesTab } from "./employees.js";
+import { $, esc, formatDateISO, formatDateShort, formatTimeShort, goToShiftLogForEmployee } from "./helpers.js";
+import { loadEmployeesTab } from "./employees.js";
 import {
   calculatePeriodOvertime,
   getSemiMonthlyPeriod,
@@ -233,8 +233,6 @@ export function setupDashboardNav() {
     renderPeriodLabel();
     reloadAllTabsForPeriod();
   });
-
-  $("#emp-back").addEventListener("click", hideEmployeeDetail);
 }
 
 export async function loadDashboard() {
@@ -319,6 +317,18 @@ export async function loadDashboard() {
   const configuredCount = activeSettings.filter((s) => s.employment_type).length;
   const unsetCount = totalEmployees - configuredCount;
 
+  // Populate pill counts: how many employees fall into each payroll cycle. SEMI is the default
+  // for unset employees, so they count there too. Weekly/custom don't have a cohort — counts
+  // hidden via empty string.
+  const cohortCounts = {
+    bi_weekly: activeSettings.filter((s) => s.pay_period_type === "bi_weekly").length,
+    semi_monthly: activeSettings.filter((s) => (s.pay_period_type || "semi_monthly") === "semi_monthly").length,
+  };
+  document.querySelectorAll("[data-pill-count]").forEach((el) => {
+    const key = el.dataset.pillCount;
+    el.textContent = cohortCounts[key] != null ? `· ${cohortCounts[key]}` : "";
+  });
+
   // Lazy-load schedule once per session — used for forecast and heat map.
   if (!state.scheduleMap) {
     state.scheduleMap = await loadSchedule();
@@ -385,11 +395,8 @@ export async function loadDashboard() {
       alerts.push({ type: "warn", icon: "⏳", text: `${esc(s.user_name)} approaching OT (${periodHRounded}h / ${threshold}h)` });
     }
   }
-  workShifts.filter((s) => s.duration_minutes > 720).forEach((s) => {
-    const h = Math.floor(s.duration_minutes / 60);
-    const m = s.duration_minutes % 60;
-    alerts.push({ type: "warn", icon: "⚠️", text: `${esc(s.user_name)} worked ${h}h ${m}m on ${formatDateShort(s.clock_in)}` });
-  });
+  // Long completed shifts (post-mortem) are visible in Shift Log via row coloring — Right Now
+  // is reserved for forward-looking signals only (open shifts, OT/cap risk).
   rows.filter((s) => s.type === "work" && !s.clock_out && (now - new Date(s.clock_in)) / 60000 > 840).forEach((s) => {
     alerts.push({ type: "danger", icon: "🔴", text: `${esc(s.user_name)} has an open shift since ${formatDateShort(s.clock_in)} ${formatTimeShort(s.clock_in)}` });
   });
@@ -418,69 +425,158 @@ export async function loadDashboard() {
     document.querySelector(".tab[data-tab=\"employees\"]")?.click();
   });
 
-  // Per-W2-employee table with progress bar + forecast
+  // Build cohort: which employees go into the table depends on the active pill.
+  // BIWK / SEMI → only employees on that payroll cycle.
+  // WKLY / CUSTOM → everyone (cohort is "all" since the window is exploratory, not payroll).
+  const cohortType = state.payPeriodType;
+  const cohortFilter = (s) => {
+    if (!isActive(s)) return false;
+    if (cohortType === "bi_weekly") return s.pay_period_type === "bi_weekly";
+    if (cohortType === "semi_monthly") return (s.pay_period_type || "semi_monthly") === "semi_monthly";
+    return true; // weekly + custom show everyone
+  };
+
+  // Section title reflects cohort + period
+  const ppTitle = $("#dash-pp-title");
+  if (ppTitle) {
+    const cohortLabel = cohortType === "bi_weekly" ? "Bi-weekly cohort"
+      : cohortType === "semi_monthly" ? "Semi-monthly cohort"
+      : cohortType === "weekly" ? "All employees · weekly view"
+      : "All employees · custom range";
+    ppTitle.innerHTML = `Pay Period Status <span class="dash-section-hint">${esc(cohortLabel)} · ${esc(state.dashPeriod.label)}</span>`;
+  }
+
+  // Per-employee rows. W2 rows get OT split + zoned progress bar; non-W2 just total + simple bar.
   const tableEl = $("#dash-period-table");
-  const w2Rows = [];
+  const cohortRows = [];
   for (const s of settings) {
-    if (s.employment_type !== "W2") continue;
-    if (!isActive(s)) continue;
-    const ot = otByEmployee[s.user_name] || { regMin: 0, otMin: 0 };
-    const empTotalMin = ot.regMin + ot.otMin;
-    const threshold = s.overtime_threshold || 80;
+    if (!cohortFilter(s)) continue;
+    const empShifts = rows.filter((r) => r.user_name === s.user_name && r.type === "work");
+    const isW2 = s.employment_type === "W2";
+
+    let totalMin = 0;
+    let regMin = 0;
+    let otMin = 0;
+    let threshold = null;
+    if (isW2) {
+      threshold = s.overtime_threshold || 80;
+      const r = calculatePeriodOvertime(empShifts, threshold, state.dashPeriod.start, state.dashPeriod.end);
+      regMin = r.regMin;
+      otMin = r.otMin;
+      totalMin = r.totalMin;
+    } else {
+      // Non-W2: sum work shifts in window via effectiveShiftMinutes (handles open shifts safely)
+      const start = state.dashPeriod.start;
+      const end = state.dashPeriod.end;
+      totalMin = empShifts.reduce((sum, r) => {
+        const t = new Date(r.clock_in);
+        if (t < start || t > end) return sum;
+        return sum + effectiveShiftMinutes(r, now);
+      }, 0);
+    }
+
     const fc = forecastEmployeeHours({
       userName: s.user_name,
-      actualMinutes: empTotalMin,
+      actualMinutes: totalMin,
       periodStart: state.dashPeriod.start,
       periodEnd: state.dashPeriod.end,
       scheduleMap: state.scheduleMap,
       now,
     });
-    w2Rows.push({ name: s.user_name, totalMin: empTotalMin, threshold, fc, ot, rate: Number(s.rate) || 0 });
-  }
-  // Sort by predicted hours descending (most-at-risk first)
-  w2Rows.sort((a, b) => b.fc.predictedMin - a.fc.predictedMin);
 
-  if (w2Rows.length === 0) {
-    tableEl.innerHTML = '<div class="dash-alert-none">No W2 employees configured yet — set them up in the Employees tab</div>';
+    cohortRows.push({
+      name: s.user_name,
+      empType: s.employment_type,
+      isW2,
+      totalMin,
+      regMin,
+      otMin,
+      threshold,
+      fc,
+      rate: Number(s.rate) || 0,
+    });
+  }
+  // Sort: highest forecast first (most at risk visible at top)
+  cohortRows.sort((a, b) => b.fc.predictedMin - a.fc.predictedMin);
+
+  if (cohortRows.length === 0) {
+    const emptyMsg = cohortType === "bi_weekly" ? "No bi-weekly employees configured. Set someone's Pay Period to Bi-weekly in the Employees tab."
+      : cohortType === "semi_monthly" ? "No semi-monthly employees in this cohort."
+      : "No active employees.";
+    tableEl.innerHTML = `<div class="dash-alert-none">${esc(emptyMsg)}</div>`;
   } else {
     let tableHtml = `<table class="dash-pp-table">
-      <thead><tr><th>Employee</th><th>Hours</th><th class="dash-pp-col-progress">Progress (0 → ${SOFT_CAP_HOURS}h cap)</th><th>Forecast end-of-period</th></tr></thead><tbody>`;
-    for (const r of w2Rows) {
+      <thead><tr><th>Employee</th><th>Hours</th><th class="dash-pp-col-progress">Progress</th><th>Forecast end-of-period</th></tr></thead><tbody>`;
+    for (const r of cohortRows) {
       const h = r.totalMin / 60;
       const predH = r.fc.predictedMin / 60;
-      const pctOfCap = Math.min(100, (h / SOFT_CAP_HOURS) * 100);
-      let zone = "ok";
-      if (h > SOFT_CAP_HOURS) { zone = "cap"; }
-      else if (h > r.threshold) { zone = "ot"; }
-      else if (h >= r.threshold * 0.875) { zone = "near"; }
 
+      const typeBadge = r.empType
+        ? `<span class="dash-pp-typebadge type-${r.empType.toLowerCase()}">${esc(r.empType)}</span>`
+        : `<span class="dash-pp-typebadge type-unset">⨯⨯</span>`;
+
+      // Forecast color & suffix based on whether predicted exceeds W2 thresholds.
+      // For non-W2, no zone semantics — show neutral.
       let fcClass = "fc-ok";
       let fcSuffix = "";
-      if (predH > SOFT_CAP_HOURS) { fcClass = "fc-cap"; fcSuffix = " ⚠ over cap"; }
-      else if (predH > r.threshold) { fcClass = "fc-ot"; fcSuffix = " ⚠ OT"; }
+      if (r.isW2) {
+        if (predH > SOFT_CAP_HOURS) { fcClass = "fc-cap"; fcSuffix = " ⚠ over cap"; }
+        else if (predH > r.threshold) { fcClass = "fc-ot"; fcSuffix = " ⚠ OT"; }
+      }
       const fcBasisLabel = r.fc.basis === "schedule" ? "from schedule"
         : r.fc.basis === "mixed" ? "schedule + est"
         : r.fc.basis === "heuristic" ? "estimated"
         : "final";
 
+      // Pay info — admin only, W2 only
       let payCell = "";
-      if (isAdmin() && r.rate > 0) {
-        const pay = (r.ot.regMin / 60) * r.rate + (r.ot.otMin / 60) * r.rate * 1.5;
+      if (r.isW2 && isAdmin() && r.rate > 0) {
+        const pay = (r.regMin / 60) * r.rate + (r.otMin / 60) * r.rate * 1.5;
         payCell = `<div class="dash-pp-pay">~$${Math.round(pay)}</div>`;
       }
 
-      const otMarkerPct = (r.threshold / SOFT_CAP_HOURS) * 100;
-
-      tableHtml += `<tr class="dash-pp-row dash-pp-zone-${zone}">
-        <td class="dash-pp-name"><a href="#" data-emp="${esc(r.name)}">${esc(r.name)}</a></td>
-        <td class="dash-pp-hours"><div class="dash-pp-hours-num">${Math.round(h * 10) / 10}h</div>${payCell}</td>
-        <td class="dash-pp-progress">
+      // Progress bar — full zoned for W2, simple for others. Both scale to soft cap so visual
+      // comparison stays consistent across rows.
+      let progressHtml;
+      if (r.isW2) {
+        const pctOfCap = Math.min(100, (h / SOFT_CAP_HOURS) * 100);
+        let zone = "ok";
+        if (h > SOFT_CAP_HOURS) zone = "cap";
+        else if (h > r.threshold) zone = "ot";
+        else if (h >= r.threshold * 0.875) zone = "near";
+        const otTickPct = (r.threshold / SOFT_CAP_HOURS) * 100;
+        progressHtml = `<div class="dash-pp-progress-wrap">
           <div class="dash-pp-bar">
             <div class="dash-pp-fill dash-pp-fill-${zone}" style="width:${pctOfCap}%"></div>
-            <span class="dash-pp-marker" title="OT threshold ${r.threshold}h" style="left:${otMarkerPct}%"></span>
+            <span class="dash-pp-tick" title="OT @ ${r.threshold}h" style="left:${otTickPct}%"></span>
+            <span class="dash-pp-tick dash-pp-tick-cap" title="Soft cap @ ${SOFT_CAP_HOURS}h" style="left:100%"></span>
           </div>
-          <span class="dash-pp-bar-label">${Math.round(h)}h<span class="dash-pp-bar-mark"> · OT@${r.threshold}h · cap@${SOFT_CAP_HOURS}h</span></span>
-        </td>
+          <div class="dash-pp-tick-labels">
+            <span class="dash-pp-tick-label" style="left:0">0h</span>
+            <span class="dash-pp-tick-label dash-pp-tick-label-ot" style="left:${otTickPct}%">${r.threshold}h <span class="dash-pp-tick-tag">OT</span></span>
+            <span class="dash-pp-tick-label dash-pp-tick-label-cap" style="left:100%">${SOFT_CAP_HOURS}h <span class="dash-pp-tick-tag">cap</span></span>
+          </div>
+        </div>`;
+      } else {
+        // Non-W2: simple proportional fill, scaled to cap for cross-row comparison
+        const pct = Math.min(100, (h / SOFT_CAP_HOURS) * 100);
+        progressHtml = `<div class="dash-pp-progress-wrap">
+          <div class="dash-pp-bar dash-pp-bar-simple">
+            <div class="dash-pp-fill dash-pp-fill-neutral" style="width:${pct}%"></div>
+          </div>
+        </div>`;
+      }
+
+      const rowZoneClass = r.isW2
+        ? (h > SOFT_CAP_HOURS ? "dash-pp-zone-cap"
+           : h > r.threshold ? "dash-pp-zone-ot"
+           : h >= r.threshold * 0.875 ? "dash-pp-zone-near" : "")
+        : "";
+
+      tableHtml += `<tr class="dash-pp-row ${rowZoneClass}">
+        <td class="dash-pp-name"><a href="#" data-emp="${esc(r.name)}">${esc(r.name)}</a>${typeBadge}</td>
+        <td class="dash-pp-hours"><div class="dash-pp-hours-num">${Math.round(h * 10) / 10}h</div>${payCell}</td>
+        <td class="dash-pp-progress">${progressHtml}</td>
         <td class="dash-pp-forecast ${fcClass}">
           <div class="dash-pp-fc-num">${Math.round(predH * 10) / 10}h${fcSuffix}</div>
           <div class="dash-pp-fc-basis">${fcBasisLabel}</div>
@@ -492,7 +588,7 @@ export async function loadDashboard() {
     tableEl.querySelectorAll("a[data-emp]").forEach((a) => {
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        document.querySelector(".tab[data-tab=\"employees\"]")?.click();
+        goToShiftLogForEmployee(a.dataset.emp);
       });
     });
   }

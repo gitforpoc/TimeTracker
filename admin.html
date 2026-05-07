@@ -74,8 +74,8 @@
       <div id="global-period-bar" class="period-bar">
         <div class="period-bar-label">PERIOD</div>
         <div class="period-pills" role="tablist" aria-label="Pay period type">
-          <button class="period-pill" data-period="semi_monthly" role="tab" aria-selected="false">SEMI</button>
-          <button class="period-pill" data-period="bi_weekly" role="tab" aria-selected="true">BIWK</button>
+          <button class="period-pill" data-period="bi_weekly" role="tab" aria-selected="true">BIWK <span class="period-pill-count" data-pill-count="bi_weekly"></span></button>
+          <button class="period-pill" data-period="semi_monthly" role="tab" aria-selected="false">SEMI <span class="period-pill-count" data-pill-count="semi_monthly"></span></button>
           <button class="period-pill" data-period="weekly" role="tab" aria-selected="false">WKLY</button>
           <button class="period-pill" data-period="custom" role="tab" aria-selected="false">CUSTOM</button>
         </div>
@@ -107,7 +107,7 @@
         </div>
 
         <div class="dash-section">
-          <h3 class="dash-section-title">Pay Period Status <span class="dash-section-hint">Per employee — current period 80h target, 120h soft cap</span></h3>
+          <h3 class="dash-section-title" id="dash-pp-title">Pay Period Status</h3>
           <div id="dash-cards" class="dash-cards"></div>
           <div id="dash-period-table" class="dash-period-table"></div>
         </div>
@@ -129,25 +129,6 @@
           </label>
         </div>
         <div id="emp-list" class="emp-list"></div>
-        <div id="emp-detail" class="emp-detail hidden">
-          <button id="emp-back" class="btn-sm">← Back to list</button>
-          <h3 id="emp-detail-name" class="emp-detail-name"></h3>
-
-          <div class="emp-section">
-            <h4 class="emp-section-title">Summary <span class="emp-section-hint" id="emp-detail-period"></span></h4>
-            <div id="emp-detail-cards" class="dash-cards"></div>
-          </div>
-
-          <div class="emp-section" id="emp-detail-edits-wrap" style="display:none;">
-            <h4 class="emp-section-title">Edit History <span class="emp-section-hint">All shift corrections in this period</span></h4>
-            <div id="emp-detail-edits"></div>
-          </div>
-
-          <div class="emp-section">
-            <h4 class="emp-section-title">Day-by-Day <span class="emp-section-hint">Each shift in the selected period</span></h4>
-            <div id="emp-detail-table" class="emp-detail-table"></div>
-          </div>
-        </div>
       </section>
 
       <!-- Live Status tab -->
@@ -351,7 +332,6 @@
           <select id="emp-edit-pay-period">
             <option value="semi_monthly">Semi-monthly (1-15 / 16-end)</option>
             <option value="bi_weekly">Bi-weekly (Thu → Wed)</option>
-            <option value="weekly">Weekly (Mon → Sun)</option>
           </select>
         </label>
         <label>

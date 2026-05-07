@@ -46,6 +46,16 @@ export function showToast(msg) {
   setTimeout(() => el.classList.remove("show"), 2000);
 }
 
+// Navigate to Shift Log tab with the employee filter pre-set.
+// Used from anywhere a row click should "drill into this employee's shifts" — replaces the
+// older detail-panel approach. Caller doesn't need a Back button: Shift Log is a normal tab.
+export function goToShiftLogForEmployee(name) {
+  const empSelect = $("#filter-employee");
+  if (empSelect) empSelect.value = name;
+  const tabBtn = document.querySelector('.tab[data-tab="shifts"]');
+  if (tabBtn) tabBtn.click();
+}
+
 // --- Session state persistence ---
 const SESSION_KEY = "tt_admin_state";
 

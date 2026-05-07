@@ -1,133 +1,29 @@
 import { state, isAdmin } from "./state.js";
-import { $, $$, esc, formatDateISO, formatDateShort, formatTimeShort, showToast } from "./helpers.js";
-import { calculatePeriodOvertime } from "../payPeriods.js";
-
-function minsToHm(min) {
-  const h = Math.floor(min / 60);
-  const m = min % 60;
-  return m === 0 ? `${h}h` : `${h}h ${m}m`;
-}
-
-const FIELD_LABELS = {
-  clock_in: "Clock In",
-  clock_out: "Clock Out",
-  duration_minutes: "Duration",
-  type: "Type",
-  comment: "Comment",
-};
-
-function formatEditValue(field, value) {
-  if (value == null || value === "") return "—";
-  if (field === "clock_in" || field === "clock_out") {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return esc(String(value));
-    return d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-  }
-  if (field === "duration_minutes") {
-    const n = Number(value);
-    return Number.isFinite(n) ? minsToHm(n) : esc(String(value));
-  }
-  return esc(String(value));
-}
-
-function renderEditsList(edits, shiftsById) {
-  const host = $("#emp-detail-edits");
-  if (!edits.length) {
-    host.innerHTML = '<div class="dash-alert-none">No edits in this period</div>';
-    return;
-  }
-  let html = `<table class="emp-edits-table"><thead><tr>
-    <th>When</th>
-    <th>Shift</th>
-    <th>Field</th>
-    <th>Old → New</th>
-    <th>By</th>
-    <th>Reason</th>
-  </tr></thead><tbody>`;
-  for (const e of edits) {
-    const editedAt = new Date(e.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-    const shift = shiftsById[e.shift_id];
-    const shiftLabel = shift
-      ? new Date(shift.clock_in).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-      : `#${e.shift_id}`;
-    const fieldLabel = FIELD_LABELS[e.field_changed] || e.field_changed;
-    const oldFmt = formatEditValue(e.field_changed, e.old_value);
-    const newFmt = formatEditValue(e.field_changed, e.new_value);
-    const reason = e.reason ? esc(e.reason) : '<span class="dash-alert-none-inline">—</span>';
-    html += `<tr>
-      <td>${editedAt}</td>
-      <td>${shiftLabel}</td>
-      <td>${esc(fieldLabel)}</td>
-      <td><span class="edit-old">${oldFmt}</span> → <span class="edit-new">${newFmt}</span></td>
-      <td>${esc(e.edited_by_name || "—")}</td>
-      <td class="edit-reason">${reason}</td>
-    </tr>`;
-  }
-  html += "</tbody></table>";
-  host.innerHTML = html;
-}
-
-// Compute reg/OT split for an employee across the visible pay period.
-// Returns null if employee is not active W2 (OT only applies to active W2 employees).
-function computeOvertimeFor(name, shifts, employeeSettings, periodStart, periodEnd) {
-  const settings = employeeSettings.find((e) => e.user_name === name);
-  if (!settings || settings.employment_type !== "W2") return null;
-  if (settings.active === false) return null; // soft-deleted employees: skip OT/payroll
-  const threshold = settings.overtime_threshold || 80;
-  const { regMin, otMin, totalMin } = calculatePeriodOvertime(shifts, threshold, periodStart, periodEnd);
-  return { regMin, otMin, totalMin, threshold };
-}
+import { $, esc, showToast, goToShiftLogForEmployee } from "./helpers.js";
 
 // --- Employees Tab ---
 
 export async function loadEmployeesTab() {
-  if (!state.supabase || !state.dashPeriod) return;
+  if (!state.supabase) return;
 
-  // Guard against stale results from rapid period changes
+  // Guard against stale results from rapid period changes (still used to coordinate with
+  // dashboard reloads that share state.loadToken).
   const myToken = ++state.loadToken;
 
-  const startISO = formatDateISO(state.dashPeriod.start);
-  const endISO = formatDateISO(state.dashPeriod.end);
-
-  const [settingsResult, shiftsResult] = await Promise.all([
-    state.supabase.from("tt_employee_settings").select("*"),
-    state.supabase
-      .from("tt_shifts")
-      .select("user_name, clock_in, duration_minutes, type")
-      .gte("clock_in", `${startISO}T00:00:00`)
-      .lte("clock_in", `${endISO}T23:59:59`)
-      .limit(5000),
-  ]);
+  // Switch-panel employees view is purely about config — no per-period stats. Single
+  // tt_employee_settings query is enough; shift data lives in the Shift Log tab.
+  const { data: settingsData } = await state.supabase.from("tt_employee_settings").select("*");
 
   if (myToken !== state.loadToken) return;
 
-  state.employeeSettings = settingsResult.data || [];
-  const rows = shiftsResult.data || [];
+  state.employeeSettings = settingsData || [];
 
-  // Aggregate per employee + keep raw shifts for OT calc
-  const empStats = {};
-  const empShifts = {};
-  rows.forEach((s) => {
-    if (!empStats[s.user_name]) {
-      empStats[s.user_name] = { hours: 0, shifts: 0, workShifts: 0 };
-      empShifts[s.user_name] = [];
-    }
-    empStats[s.user_name].shifts++;
-    empShifts[s.user_name].push(s);
-    if (s.type === "work") {
-      empStats[s.user_name].hours += s.duration_minutes || 0;
-      empStats[s.user_name].workShifts++;
-    }
-  });
-
-  // Build warehouse map
+  // Build warehouse map + group employees by warehouse
   const whMap = {};
   state.employeeSettings.forEach((es) => {
     whMap[es.user_name] = es.warehouse || "Unassigned";
   });
-
-  // Group by warehouse
-  const allNames = [...new Set([...Object.keys(empStats), ...state.employeeSettings.map((e) => e.user_name)])].sort();
+  const allNames = state.employeeSettings.map((e) => e.user_name).sort();
   const groups = {};
   allNames.forEach((name) => {
     const wh = whMap[name] || "Unassigned";
@@ -228,12 +124,12 @@ export async function loadEmployeesTab() {
 
   listEl.innerHTML = html;
 
-  // Row click → drill into employee detail (Day-by-Day, Edit History, etc.)
+  // Row click → jump to Shift Log filtered to this employee. Edit/configure button stops
+  // propagation so it opens the modal instead.
   listEl.querySelectorAll(".emp-row").forEach((row) => {
     row.addEventListener("click", (e) => {
-      // Don't drill down if user clicked the edit / configure button
       if (e.target.closest(".emp-row-edit")) return;
-      showEmployeeDetail(row.dataset.name);
+      goToShiftLogForEmployee(row.dataset.name);
     });
   });
 
@@ -247,209 +143,8 @@ export async function loadEmployeesTab() {
 
   // Filter change
   filterEl.onchange = () => loadEmployeesTab();
-
-  // Ensure list visible, detail hidden
   listEl.classList.remove("hidden");
-  $("#emp-detail").classList.add("hidden");
 }
-
-async function showEmployeeDetail(name) {
-  if (!state.supabase || !state.dashPeriod) return;
-
-  const startISO = formatDateISO(state.dashPeriod.start);
-  const endISO = formatDateISO(state.dashPeriod.end);
-
-  // Step 1: fetch this employee's shifts in the period
-  const { data: shiftsData } = await state.supabase
-    .from("tt_shifts")
-    .select("id, clock_in, clock_out, duration_minutes, type, comment")
-    .eq("user_name", name)
-    .gte("clock_in", `${startISO}T00:00:00`)
-    .lte("clock_in", `${endISO}T23:59:59`)
-    .order("clock_in", { ascending: true });
-
-  const shifts = shiftsData || [];
-
-  // Step 2: fetch edits filtered to ONLY this employee's shifts (not all edits in period)
-  const shiftIds = shifts.map((s) => s.id);
-  let editsList = [];
-  if (shiftIds.length > 0) {
-    const { data: editsData } = await state.supabase
-      .from("tt_edits")
-      .select("id, shift_id, field_changed, old_value, new_value, edited_by_name, reason, created_at")
-      .in("shift_id", shiftIds)
-      .order("created_at", { ascending: false });
-    editsList = editsData || [];
-  }
-  const editsCount = editsList.length;
-  // Make available to the renderer below
-  state.employeeEditsList = editsList;
-  state.employeeShiftsByIdForEdits = Object.fromEntries(shifts.map((s) => [s.id, s]));
-
-  // Summary
-  const workShifts = shifts.filter((s) => s.type === "work");
-  const totalMin = workShifts.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
-  const totalH = Math.floor(totalMin / 60);
-  const totalM = totalMin % 60;
-  const avg = workShifts.length > 0 ? Math.round(totalMin / workShifts.length / 60 * 10) / 10 : 0;
-
-  // Overtime (W2 only) — period-bounded so Reg + OT == Total Hours visible.
-  // Note: workweeks split by the period boundary may show slightly low OT (≤5h typical);
-  // this is the simple/intuitive trade-off and matches what most small payroll runs do.
-  const ot = computeOvertimeFor(name, workShifts, state.employeeSettings, state.dashPeriod.start, state.dashPeriod.end);
-  const settings = state.employeeSettings.find((e) => e.user_name === name) || {};
-  let otCard = "";
-  if (ot) {
-    const otH = Math.round(ot.otMin / 60 * 10) / 10;
-    const regH = Math.round(ot.regMin / 60 * 10) / 10;
-    let payLine = "";
-    // Pay totals: admin only — supervisors see hours, not money
-    if (isAdmin() && settings.rate) {
-      const regPay = (ot.regMin / 60) * Number(settings.rate);
-      const otPay = (ot.otMin / 60) * Number(settings.rate) * 1.5;
-      const total = regPay + otPay;
-      payLine = `<div class="dash-card-sub">~$${total.toFixed(0)} ($${regPay.toFixed(0)} reg + $${otPay.toFixed(0)} OT)</div>`;
-    }
-    otCard = `<div class="dash-card"><div class="dash-card-label">Reg / OT (W2)</div><div class="dash-card-value accent-yellow">${regH}h / ${otH}h</div>${payLine}</div>`;
-  }
-
-  // Header with employment type badge and period label
-  const empTypeBadge = settings.employment_type
-    ? `<span class="emp-detail-type-badge type-${settings.employment_type.toLowerCase()}">${esc(settings.employment_type)}</span>`
-    : "";
-  $("#emp-detail-name").innerHTML = `${esc(name)}${empTypeBadge}`;
-  $("#emp-detail-period").textContent = state.dashPeriod.label || "";
-
-  // Edits card: clickable when count > 0 — toggles the edit-history section below
-  const editsCardClass = editsCount > 0 ? "dash-card dash-card-action" : "dash-card";
-  const editsCardId = editsCount > 0 ? ' id="emp-detail-edits-toggle"' : "";
-  const editsHint = editsCount > 0 ? '<div class="dash-card-sub">Click to view</div>' : "";
-
-  $("#emp-detail-cards").innerHTML = `
-    <div class="dash-card"><div class="dash-card-label">Total Hours</div><div class="dash-card-value accent-blue">${totalH}h ${totalM}m</div></div>
-    <div class="dash-card"><div class="dash-card-label">Shifts</div><div class="dash-card-value accent-pink">${shifts.length}</div></div>
-    <div class="dash-card"><div class="dash-card-label">Avg Shift</div><div class="dash-card-value accent-green">${avg}h</div></div>
-    ${otCard}
-    <div class="${editsCardClass}"${editsCardId}><div class="dash-card-label">Edits</div><div class="dash-card-value accent-yellow">${editsCount}</div>${editsHint}</div>
-  `;
-
-  // Wire toggle for edits section
-  if (editsCount > 0) {
-    const toggleBtn = $("#emp-detail-edits-toggle");
-    if (toggleBtn) {
-      toggleBtn.addEventListener("click", () => {
-        const wrap = $("#emp-detail-edits-wrap");
-        const isHidden = wrap.style.display === "none" || wrap.style.display === "";
-        if (isHidden) {
-          renderEditsList(editsList, state.employeeShiftsByIdForEdits);
-          wrap.style.display = "block";
-          wrap.scrollIntoView({ behavior: "smooth", block: "nearest" });
-        } else {
-          wrap.style.display = "none";
-        }
-      });
-    }
-  } else {
-    $("#emp-detail-edits-wrap").style.display = "none";
-  }
-
-  // (Weekly breakdown removed — company computes OT per pay period, not per workweek.)
-
-  // Day-by-day table
-  const shiftsByDate = {};
-  shifts.forEach((s) => {
-    const key = new Date(s.clock_in).toDateString();
-    if (!shiftsByDate[key]) shiftsByDate[key] = [];
-    shiftsByDate[key].push(s);
-  });
-
-  // Generate all dates in period
-  const allDates = [];
-  const cur = new Date(state.dashPeriod.start);
-  const endDate = new Date(state.dashPeriod.end);
-  while (cur <= endDate) {
-    allDates.push(new Date(cur));
-    cur.setDate(cur.getDate() + 1);
-  }
-
-  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  let tableHtml = `<table class="emp-day-table"><thead><tr><th>Date</th><th>Day</th><th>Status</th><th>In</th><th>Out</th><th>Hours</th></tr></thead><tbody>`;
-
-  allDates.forEach((d) => {
-    const key = d.toDateString();
-    const dayShifts = shiftsByDate[key];
-
-    if (!dayShifts || dayShifts.length === 0) {
-      tableHtml += `<tr class="no-data">
-        <td>${formatDateShort(d.toISOString())}</td>
-        <td>${dayNames[d.getDay()]}</td>
-        <td>—</td><td>—</td><td>—</td><td>—</td>
-      </tr>`;
-      return;
-    }
-
-    dayShifts.forEach((s) => {
-      let rowClass = "";
-      let statusLabel = "Work";
-      if (s.type === "day_off") { rowClass = "day-off"; statusLabel = "Day Off"; }
-      else if (s.type === "paid_off") { rowClass = "paid-off"; statusLabel = "Paid Off"; }
-
-      const min = s.duration_minutes || 0;
-      const h = Math.floor(min / 60);
-      const m = min % 60;
-      const hoursStr = min > 0 ? `${h}h ${m}m` : "—";
-
-      // Bar
-      let barClass = "bar-green";
-      let barWidth = 0;
-      if (s.type === "work" && min > 0) {
-        barWidth = Math.min(100, Math.round((min / 720) * 100)); // 12h = 100%
-        if (min > 600) barClass = "bar-red";
-        else if (min >= 480) barClass = "bar-yellow";
-      }
-
-      tableHtml += `<tr class="${rowClass}">
-        <td>${formatDateShort(s.clock_in)}</td>
-        <td>${dayNames[d.getDay()]}</td>
-        <td>${statusLabel}</td>
-        <td>${formatTimeShort(s.clock_in)}</td>
-        <td>${s.clock_out ? formatTimeShort(s.clock_out) : "—"}</td>
-        <td>${hoursStr}${barWidth > 0 ? ` <span class="emp-hour-bar ${barClass}" style="width:${barWidth}px"></span>` : ""}</td>
-      </tr>`;
-    });
-  });
-
-  tableHtml += "</tbody></table>";
-  $("#emp-detail-table").innerHTML = tableHtml;
-
-  // Show detail, hide list
-  $("#emp-list").classList.add("hidden");
-  $("#emp-detail").classList.remove("hidden");
-  // If we're already showing a different employee's detail, replace history (don't stack).
-  // Otherwise push so browser Back returns to the list.
-  if (window.history.state?.empDetail) {
-    window.history.replaceState({ empDetail: name }, "", `#employee-${encodeURIComponent(name)}`);
-  } else {
-    window.history.pushState({ empDetail: name }, "", `#employee-${encodeURIComponent(name)}`);
-  }
-}
-
-export function hideEmployeeDetail() {
-  $("#emp-detail").classList.add("hidden");
-  $("#emp-list").classList.remove("hidden");
-  // Go back in history if we pushed a state
-  if (window.history.state?.empDetail) {
-    window.history.back();
-  }
-}
-
-// Handle browser back button / swipe
-window.addEventListener("popstate", (e) => {
-  if ($("#emp-detail") && !$("#emp-detail").classList.contains("hidden")) {
-    $("#emp-detail").classList.add("hidden");
-    $("#emp-list").classList.remove("hidden");
-  }
-});
 
 // --- Employee Edit Modal ---
 
