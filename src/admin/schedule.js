@@ -141,18 +141,22 @@ export function parseSchedule(csvText, defaultYear = new Date().getFullYear()) {
     if (/payroll|goal|total/i.test(name)) continue; // header continuation rows leak in here
 
     for (const { inCol, outCol, dateISO } of dateCols) {
-      const inStr = row[inCol] || "";
-      const outStr = row[outCol] || "";
-      const planMinutes = computePlanMinutes(inStr, outStr);
-      // Only record entries with a real time (skip purely-off cells to keep the map small).
-      if (planMinutes === 0 && parseTimeToMinutes(inStr) == null) continue;
+      const inStr = (row[inCol] || "").trim();
+      const outStr = (row[outCol] || "").trim();
+
+      // Truly empty cell (no data, no day-off marker) — skip
+      if (inStr === "" && outStr === "") continue;
+
+      // "0,0" → explicitly entered day off. Distinguished from missing data so forecast can
+      // honor it and not assume work on that day.
+      const isExplicitOff = (inStr === "0" || inStr === "0:00") && (outStr === "0" || outStr === "0:00");
+      const planMinutes = isExplicitOff ? 0 : computePlanMinutes(inStr, outStr);
+
+      // Skip cells we couldn't parse (typos, junk) — they're not useful as either work or off
+      if (planMinutes === 0 && !isExplicitOff) continue;
 
       if (!result.has(dateISO)) result.set(dateISO, new Map());
-      result.get(dateISO).set(name, {
-        inTime: inStr.trim(),
-        outTime: outStr.trim(),
-        planMinutes,
-      });
+      result.get(dateISO).set(name, { inTime: inStr, outTime: outStr, planMinutes });
     }
   }
 

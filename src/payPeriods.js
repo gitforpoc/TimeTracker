@@ -116,6 +116,14 @@ export function totalOvertimeMinutes(shifts, threshold = DEFAULT_OVERTIME_THRESH
   return calculateWeeklyOvertime(shifts, threshold).reduce((sum, w) => sum + w.otMin, 0);
 }
 
+// Heat days = end-of-month moving spike. Boss-confirmed: 25th–end-of-month and 1st–2nd of next
+// month are consistently busy days where employees rarely take a day off. Used in forecast (no
+// day-off discount on these dates) and Heat Map (visual highlight).
+export function isHeatDay(date) {
+  const dom = date.getDate();
+  return dom >= 25 || dom <= 2;
+}
+
 // Effective minutes for a single shift, accounting for currently-open shifts.
 // - Closed shift: returns duration_minutes.
 // - Open shift ≤ 16h old: returns elapsed minutes since clock_in (legitimate ongoing work).

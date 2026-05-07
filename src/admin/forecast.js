@@ -1,25 +1,41 @@
-// Forecast helper for predicting end-of-period hours per employee.
+// Forecast helper — predicts end-of-period hours per employee.
 //
-// Strategy (in order of preference):
-//   1. Schedule-based: if the schedule CSV has planned hours for the remaining days, use those.
-//      Most accurate — these are hours the supervisor actually planned.
-//   2. Linear extrapolation: actual hours so far / days elapsed × total days in period.
-//      Falls back to this when schedule has no data (e.g., past last sheet update or for new hires).
+// Strategy: walk through every remaining calendar day in the period and add expected hours.
+// For each day:
+//   1. Schedule CSV has an entry for this user (incl. "0,0" = explicit day off) → use it.
+//   2. No schedule entry, day is a heat day (25-EOM, 1-2 next month) → 10h flat.
+//      Boss-confirmed pattern: moving company spike, no day off taken.
+//   3. No schedule entry, regular day → 8.4h × 6/7 ≈ 7.2h to account for "typical 1 day off / week".
+//
+// The 8.4h baseline is the historical median shift (analyzed across 279 shifts excluding the
+// 4 heaviest workers + test users). 10h is the observed avg on heat days.
 //
 // Returns { actualMin, scheduledRemainingMin, predictedMin, basis }
-//   - basis: "schedule" | "linear" | "actual_only" (when period is over / no remaining days)
+//   - basis: "schedule" (all remaining days had explicit entries)
+//          | "heuristic" (no schedule data for any remaining day)
+//          | "mixed"     (some days had schedule, others used heuristic)
+//          | "actual_only" (period over or no remaining days)
 
-import { sumScheduledMinutes } from "./schedule.js";
+import {
+  FORECAST_DEFAULT_SHIFT_MIN,
+  FORECAST_HEAT_DAY_SHIFT_MIN,
+  FORECAST_WORK_DAY_RATIO,
+} from "../constants.js";
+import { isHeatDay } from "../payPeriods.js";
 
-const MS_PER_DAY = 86400000;
-
-function diffDaysFloor(a, b) {
-  const aMid = new Date(a); aMid.setHours(0, 0, 0, 0);
-  const bMid = new Date(b); bMid.setHours(0, 0, 0, 0);
-  return Math.round((aMid.getTime() - bMid.getTime()) / MS_PER_DAY);
+function toISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-// `now` is the current time; defaults to "real now". Tests pass an explicit value.
+function expectedMinutesForDay(date) {
+  return isHeatDay(date)
+    ? FORECAST_HEAT_DAY_SHIFT_MIN
+    : FORECAST_DEFAULT_SHIFT_MIN * FORECAST_WORK_DAY_RATIO;
+}
+
 export function forecastEmployeeHours(opts) {
   const {
     userName,
@@ -30,48 +46,48 @@ export function forecastEmployeeHours(opts) {
     now = new Date(),
   } = opts;
 
-  // Period is over → no forecast needed.
+  // Period over → no forecast needed; today's hours are the final answer.
   if (now > periodEnd) {
     return { actualMin: actualMinutes, scheduledRemainingMin: 0, predictedMin: actualMinutes, basis: "actual_only" };
   }
 
-  // Tomorrow is the first remaining day. (Today is partially done — we already include
-  // its actual hours in actualMinutes, and we don't want to double-count its scheduled hours.)
-  const tomorrow = new Date(now);
-  tomorrow.setHours(0, 0, 0, 0);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Today is partially-done — its actual hours are already in actualMinutes, so we don't double
+  // count by re-adding scheduled/heuristic hours for today. Start the walk from tomorrow.
+  const cur = new Date(now);
+  cur.setHours(0, 0, 0, 0);
+  cur.setDate(cur.getDate() + 1);
 
-  // Try schedule-based remaining hours first.
-  let scheduledRemaining = 0;
-  if (scheduleMap && tomorrow <= periodEnd) {
-    scheduledRemaining = sumScheduledMinutes(scheduleMap, userName, tomorrow, periodEnd);
+  let estimatedMin = 0;
+  let scheduleHits = 0;
+  let heuristicHits = 0;
+
+  while (cur <= periodEnd) {
+    const iso = toISODate(cur);
+    const entry = scheduleMap?.get(iso)?.get(userName);
+
+    if (entry !== undefined) {
+      // Explicit schedule entry (planMinutes=0 means day off — included as 0 contribution)
+      estimatedMin += entry.planMinutes;
+      scheduleHits++;
+    } else {
+      estimatedMin += expectedMinutesForDay(cur);
+      heuristicHits++;
+    }
+    cur.setDate(cur.getDate() + 1);
   }
 
-  if (scheduledRemaining > 0) {
-    return {
-      actualMin: actualMinutes,
-      scheduledRemainingMin: scheduledRemaining,
-      predictedMin: actualMinutes + scheduledRemaining,
-      basis: "schedule",
-    };
-  }
-
-  // Fall back to linear extrapolation. Anchor on whole calendar days, not hours, to avoid
-  // wild swings early in the period (when partial day 1 would over-extrapolate).
-  const daysElapsed = Math.max(1, diffDaysFloor(now, periodStart) + 1); // +1 because day 1 counts
-  const daysTotal = diffDaysFloor(periodEnd, periodStart) + 1;
-  const daysRemaining = Math.max(0, daysTotal - daysElapsed);
-
-  if (daysRemaining === 0 || actualMinutes === 0) {
+  if (scheduleHits === 0 && heuristicHits === 0) {
     return { actualMin: actualMinutes, scheduledRemainingMin: 0, predictedMin: actualMinutes, basis: "actual_only" };
   }
 
-  const ratePerDayMin = actualMinutes / daysElapsed;
-  const projectedRemaining = ratePerDayMin * daysRemaining;
+  const basis = heuristicHits === 0 ? "schedule"
+              : scheduleHits === 0 ? "heuristic"
+              : "mixed";
+
   return {
     actualMin: actualMinutes,
-    scheduledRemainingMin: Math.round(projectedRemaining),
-    predictedMin: Math.round(actualMinutes + projectedRemaining),
-    basis: "linear",
+    scheduledRemainingMin: Math.round(estimatedMin),
+    predictedMin: Math.round(actualMinutes + estimatedMin),
+    basis,
   };
 }

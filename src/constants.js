@@ -51,3 +51,11 @@ export const WORKWEEK_START_DAY = 4; // Thursday
 // Boss-confirmed 2026-05-05: company runs OT per pay period, not per FLSA workweek.
 export const DEFAULT_OVERTIME_THRESHOLD = 80;
 export const SOFT_CAP_HOURS = 120;
+
+// Forecast heuristics — used when the schedule CSV doesn't have an entry for a remaining day.
+// Numbers come from analyzing 279 historical shifts (excl. heaviest workers + tests, Jan-Apr 2026):
+// median shift = 8.4h, avg = 8.9h. Heat-day boost = 10h (boss confirmed: end-of-month moving spike,
+// no day off taken). 6/7 work ratio reflects "typically 1 day off per week" rule of thumb.
+export const FORECAST_DEFAULT_SHIFT_MIN = 504;   // 8.4h
+export const FORECAST_HEAT_DAY_SHIFT_MIN = 600;  // 10h
+export const FORECAST_WORK_DAY_RATIO = 6 / 7;    // ≈0.857

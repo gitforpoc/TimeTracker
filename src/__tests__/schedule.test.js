@@ -100,11 +100,14 @@ describe("parseSchedule", () => {
     expect(may1.get("Jairo").planMinutes).toBe(8 * 60);
     expect(may1.get("Pavel").planMinutes).toBe(8 * 60);
 
-    // 5/3 — Alex 14h, Jairo off (no entry), Pavel off (no entry)
+    // 5/3 — Alex 14h, Jairo + Pavel explicit off ("0,0" cells in CSV).
+    // Off-day entries are now retained (planMinutes=0) so forecast can honor "this day is off".
     const may3 = map.get("2026-05-03");
     expect(may3.get("Alex").planMinutes).toBe(14 * 60);
-    expect(may3.has("Jairo")).toBe(false); // off-day cells skipped
-    expect(may3.has("Pavel")).toBe(false);
+    expect(may3.has("Jairo")).toBe(true);
+    expect(may3.get("Jairo").planMinutes).toBe(0);
+    expect(may3.has("Pavel")).toBe(true);
+    expect(may3.get("Pavel").planMinutes).toBe(0);
 
     // 5/4 — Pavel 9:15 AM → 6:45 PM = 9h 30m
     const may4 = map.get("2026-05-04");

@@ -7,6 +7,7 @@ import {
   getBiWeeklyPeriod,
   getWeeklyPeriod,
   effectiveShiftMinutes,
+  isHeatDay,
 } from "../payPeriods.js";
 import { SOFT_CAP_HOURS } from "../constants.js";
 import { loadSchedule } from "./schedule.js";
@@ -443,22 +444,24 @@ export async function loadDashboard() {
     tableEl.innerHTML = '<div class="dash-alert-none">No W2 employees configured yet — set them up in the Employees tab</div>';
   } else {
     let tableHtml = `<table class="dash-pp-table">
-      <thead><tr><th>Employee</th><th>Hours</th><th class="dash-pp-col-progress">Progress (0 → ${SOFT_CAP_HOURS}h cap)</th><th>Forecast end-of-period</th><th>Status</th></tr></thead><tbody>`;
+      <thead><tr><th>Employee</th><th>Hours</th><th class="dash-pp-col-progress">Progress (0 → ${SOFT_CAP_HOURS}h cap)</th><th>Forecast end-of-period</th></tr></thead><tbody>`;
     for (const r of w2Rows) {
       const h = r.totalMin / 60;
       const predH = r.fc.predictedMin / 60;
       const pctOfCap = Math.min(100, (h / SOFT_CAP_HOURS) * 100);
       let zone = "ok";
-      let statusText = "On track";
-      if (h > SOFT_CAP_HOURS) { zone = "cap"; statusText = "OVER cap"; }
-      else if (h > r.threshold) { zone = "ot"; statusText = "Over OT"; }
-      else if (h >= r.threshold * 0.875) { zone = "near"; statusText = "Approaching OT"; }
+      if (h > SOFT_CAP_HOURS) { zone = "cap"; }
+      else if (h > r.threshold) { zone = "ot"; }
+      else if (h >= r.threshold * 0.875) { zone = "near"; }
 
       let fcClass = "fc-ok";
       let fcSuffix = "";
       if (predH > SOFT_CAP_HOURS) { fcClass = "fc-cap"; fcSuffix = " ⚠ over cap"; }
       else if (predH > r.threshold) { fcClass = "fc-ot"; fcSuffix = " ⚠ OT"; }
-      const fcBasisLabel = r.fc.basis === "schedule" ? "from schedule" : r.fc.basis === "linear" ? "estimated" : "final";
+      const fcBasisLabel = r.fc.basis === "schedule" ? "from schedule"
+        : r.fc.basis === "mixed" ? "schedule + est"
+        : r.fc.basis === "heuristic" ? "estimated"
+        : "final";
 
       let payCell = "";
       if (isAdmin() && r.rate > 0) {
@@ -482,7 +485,6 @@ export async function loadDashboard() {
           <div class="dash-pp-fc-num">${Math.round(predH * 10) / 10}h${fcSuffix}</div>
           <div class="dash-pp-fc-basis">${fcBasisLabel}</div>
         </td>
-        <td class="dash-pp-status">${statusText}</td>
       </tr>`;
     }
     tableHtml += "</tbody></table>";
@@ -537,15 +539,14 @@ export async function loadDashboard() {
     const planned = plannedByDay[iso] || 0;
     const dayName = dayNames[d.getDay()];
     const dayLabel = `${d.getMonth() + 1}/${d.getDate()}`;
-    const dom = d.getDate();
-    const isHeatDay = dom >= 25 || dom <= 2;
+    const heat = isHeatDay(d);
     const actPct = Math.round((actual / hmMaxMin) * 100);
     const plnPct = Math.round((planned / hmMaxMin) * 100);
     const isPast = d < now && d.toDateString() !== now.toDateString();
     const isToday = d.toDateString() === now.toDateString();
-    const tooltip = `${dayName} ${dayLabel}\nPlanned: ${Math.round(planned / 60 * 10) / 10}h\nActual: ${Math.round(actual / 60 * 10) / 10}h${isHeatDay ? "\n⚡ Expected high load (end/start of month)" : ""}`;
+    const tooltip = `${dayName} ${dayLabel}\nPlanned: ${Math.round(planned / 60 * 10) / 10}h\nActual: ${Math.round(actual / 60 * 10) / 10}h${heat ? "\n⚡ Expected high load (end/start of month)" : ""}`;
     const cellClass = ["dash-hm-cell"];
-    if (isHeatDay) cellClass.push("dash-hm-heat");
+    if (heat) cellClass.push("dash-hm-heat");
     if (isToday) cellClass.push("dash-hm-today");
     if (isPast) cellClass.push("dash-hm-past");
     return `<div class="${cellClass.join(" ")}" title="${tooltip}">
