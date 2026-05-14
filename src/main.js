@@ -193,8 +193,13 @@ async function performClockAction(action) {
   els.mainBtn.classList.add("pending");
   els.mainBtn.innerText = action === "in" ? "STARTING..." : "ENDING...";
   els.mainBtn.disabled = true;
-  // Wait for GPS if enabled (max 5s timeout built into requestLocation)
-  if (store.geoEnabled) await requestLocation();
+  // GPS does NOT block submit: it's pre-fetched on app load + on openActionSheet,
+  // so lastCoords is usually fresh by the time the user confirms. If still null
+  // (denied / first-acquire too slow / sub-second confirm), submit goes through
+  // with lat=lng=null — payroll doesn't depend on GPS, zone matching is best-effort.
+  // This shrinks the click→fetch window from up to 5s to <100ms, which is critical
+  // for devices with aggressive battery optimization that kill the WebView the
+  // moment the share sheet steals focus (Samsung in particular).
   const now = new Date();
   const timeStr = formatTime(now);
   let msg = "";
