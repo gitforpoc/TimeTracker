@@ -456,7 +456,13 @@ circle {
   padding: 10px;
   cursor: pointer;
   line-height: 1;
+  border-radius: 999px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(28, 28, 87, 0.16);
+  transition: background-color 120ms ease, transform 120ms ease;
 }
+.close-btn:hover  { background: rgba(28, 28, 87, 0.08); }
+.close-btn:active { background: rgba(28, 28, 87, 0.18); transform: scale(0.92); }
 
 .modal-content {
   padding: 20px;
