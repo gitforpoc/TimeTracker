@@ -60,34 +60,58 @@ header {
 .admin-link.hidden {
   display: none;
 }
-.history-wrapper {
-  position: relative;
-}
-.icon-btn {
-  background: none;
+/* History pill button */
+.history-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 14px;
   border: none;
+  border-radius: 999px;
+  background: rgba(28, 28, 87, 0.08);
+  color: var(--navy);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
   cursor: pointer;
-  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: rgba(28, 28, 87, 0.16);
+  transition: background-color 120ms ease, transform 120ms ease;
 }
-
-/* Badge */
-.badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  background: var(--pink);
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  min-width: 18px;
+.history-pill:hover {
+  background: rgba(28, 28, 87, 0.14);
+}
+.history-pill:active {
+  background: rgba(28, 28, 87, 0.22);
+  transform: scale(0.96);
+}
+.history-pill-icon {
+  width: 18px;
   height: 18px;
-  border-radius: 50%;
-  display: flex;
+  flex-shrink: 0;
+}
+.history-pill-label {
+  white-space: nowrap;
+}
+.history-pill-badge {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--white);
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--pink);
+  color: var(--white);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
-.badge.hidden {
+.history-pill-badge.hidden {
   display: none;
 }
 

@@ -288,35 +288,72 @@ async function fetchPayPeriodType() {
   }
 }
 
-export async function openHistory() {
+// Guards against parallel refreshInBackground runs if the user reopens the
+// modal before the first network round-trip completes.
+let refreshing = false;
+
+export function openHistory() {
   resetBadge();
-  await fetchPayPeriodType();
-  populatePeriods();
-
-  // Auto-select the current period (first option, since periods are listed newest-first)
-  if (els.periodSelect.options.length > 0) {
-    els.periodSelect.value = els.periodSelect.options[0].value;
-  }
-
+  // 1. Open the modal RIGHT NOW — no awaits, no network blocks.
   els.historyView.classList.remove("hidden");
   window.history.pushState({ modal: "history" }, "History", "#history");
 
-  // SSO users: flush sync queue, then fetch fresh data from server
-  if (isUserAuthenticated) {
-    renderHistoryList(); // show local data first while loading
-    renderReport();
-    const list = document.getElementById("history-list");
-    const syncNote = document.createElement("div");
-    syncNote.className = "sync-loading";
-    syncNote.textContent = "Syncing with server...";
-    list.prepend(syncNote);
-    await sync.processQueue(); // flush pending items first
-    await fetchServerData();
-    syncNote.remove();
+  // 2. Render with whatever local state we have. populatePeriods uses the
+  //    current cached userPayPeriodType (defaults to "semi_monthly" until
+  //    the background fetch updates it).
+  populatePeriods();
+  if (els.periodSelect.options.length > 0) {
+    els.periodSelect.value = els.periodSelect.options[0].value;
   }
-
   renderHistoryList();
   renderReport();
+
+  // 3. Refresh in the background (pay-period-type + server data).
+  refreshInBackground();
+}
+
+async function refreshInBackground() {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    const previousPeriodType = userPayPeriodType;
+    await fetchPayPeriodType();
+    // If the cached pay-period-type changed, repopulate so the dropdown
+    // reflects the user's actual cadence.
+    if (userPayPeriodType !== previousPeriodType) {
+      const prevValue = els.periodSelect.value;
+      populatePeriods();
+      // Restore selection if it still exists, otherwise pick newest.
+      const stillThere = Array.from(els.periodSelect.options).some(
+        (o) => o.value === prevValue,
+      );
+      if (stillThere) {
+        els.periodSelect.value = prevValue;
+      } else if (els.periodSelect.options.length > 0) {
+        els.periodSelect.value = els.periodSelect.options[0].value;
+      }
+    }
+
+    if (isUserAuthenticated) {
+      const list = document.getElementById("history-list");
+      const syncNote = document.createElement("div");
+      syncNote.className = "sync-loading";
+      syncNote.textContent = "Syncing with server...";
+      list.prepend(syncNote);
+      try {
+        await sync.processQueue();
+        await fetchServerData();
+      } catch (e) {
+        console.error("History refresh failed:", e);
+      } finally {
+        syncNote.remove();
+      }
+      renderHistoryList();
+      renderReport();
+    }
+  } finally {
+    refreshing = false;
+  }
 }
 
 export function closeHistory() {
