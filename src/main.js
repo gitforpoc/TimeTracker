@@ -18,6 +18,7 @@ import {
   exportData,
   triggerRestore,
   importData,
+  refreshDrafts,
 } from "./history.js";
 import {
   formatTime,
@@ -38,6 +39,13 @@ import {
   markClockActionStart,
   markClockActionEnd,
 } from "./syncShiftState.js";
+import {
+  validateBackdate,
+  findLastClosedShiftOutToday,
+  toDatetimeLocalValue,
+  parseDatetimeLocalValue,
+  MAX_BACKDATE_HOURS,
+} from "./backdateValidation.js";
 
 // --- DOM Elements ---
 const els = {
@@ -64,6 +72,13 @@ const els = {
   sheetDesc: document.getElementById("sheet-desc"),
   sheetConfirm: document.getElementById("sheet-confirm"),
   sheetCancel: document.getElementById("sheet-cancel"),
+  // Backdate-at-tap picker
+  sheetBackdateLabel: document.getElementById("sheet-backdate-label"),
+  sheetBackdateTime: document.getElementById("sheet-backdate-time"),
+  sheetBackdateToggle: document.getElementById("sheet-backdate-toggle"),
+  sheetBackdateEditor: document.getElementById("sheet-backdate-editor"),
+  sheetBackdateInput: document.getElementById("sheet-backdate-input"),
+  sheetBackdateError: document.getElementById("sheet-backdate-error"),
   restoreInput: document.getElementById("restore-file"),
 };
 
@@ -120,9 +135,92 @@ function hideQuote() {
 }
 
 // --- Action Sheet ---
+// Backdate state — per open of the action sheet.
+let sheetAction = null;            // "in" | "out"
+let sheetOpenedAtMs = 0;            // for `min` bound on input
+let sheetUserPickedMs = null;       // null until user actively edits
+let sheetOpenShiftInMs = null;      // for Clock Out validation
+let sheetLastClosedOutMs = null;    // for Clock In validation
+
+function setupBackdatePicker(action, now) {
+  sheetAction = action;
+  sheetOpenedAtMs = now.getTime();
+  sheetUserPickedMs = null;
+
+  // Reset UI to collapsed state — the picker is hidden by default; 90%+ of
+  // users tap CLOCK IN without ever interacting with it.
+  els.sheetBackdateEditor.classList.add("hidden");
+  els.sheetBackdateError.textContent = "";
+  els.sheetBackdateInput.classList.remove("invalid");
+  els.sheetBackdateToggle.textContent = "◂ edit";
+  els.sheetBackdateLabel.textContent = action === "in" ? "Started at" : "Ended at";
+  els.sheetBackdateTime.textContent = formatTime(now);
+
+  // datetime-local bounds: min = now-12h, max = now (anti-future)
+  const minMs = sheetOpenedAtMs - MAX_BACKDATE_HOURS * 3600000;
+  els.sheetBackdateInput.min = toDatetimeLocalValue(minMs);
+  els.sheetBackdateInput.max = toDatetimeLocalValue(sheetOpenedAtMs);
+  els.sheetBackdateInput.value = toDatetimeLocalValue(sheetOpenedAtMs);
+
+  // Cache validation context for the input handler.
+  if (action === "out") {
+    const shift = store.findShift(store.currentShiftId);
+    sheetOpenShiftInMs = shift ? shift.in : null;
+    sheetLastClosedOutMs = null;
+  } else {
+    sheetOpenShiftInMs = null;
+    sheetLastClosedOutMs = findLastClosedShiftOutToday(store.data, sheetOpenedAtMs);
+  }
+}
+
+function onBackdateInput() {
+  const value = els.sheetBackdateInput.value;
+  const chosenMs = parseDatetimeLocalValue(value);
+  const verdict = validateBackdate(
+    chosenMs,
+    Date.now(),
+    sheetAction,
+    sheetOpenShiftInMs,
+    sheetLastClosedOutMs
+  );
+  if (verdict.ok) {
+    sheetUserPickedMs = chosenMs;
+    els.sheetBackdateError.textContent = "";
+    els.sheetBackdateInput.classList.remove("invalid");
+    els.sheetConfirm.disabled = false;
+    els.sheetBackdateTime.textContent = formatTime(new Date(chosenMs));
+  } else {
+    sheetUserPickedMs = null;
+    els.sheetBackdateError.textContent = verdict.message;
+    els.sheetBackdateInput.classList.add("invalid");
+    els.sheetConfirm.disabled = true;
+  }
+}
+
+function onBackdateToggle() {
+  const hidden = els.sheetBackdateEditor.classList.toggle("hidden");
+  if (!hidden) {
+    // Just expanded — focus the input for immediate keyboard use.
+    els.sheetBackdateInput.focus();
+  } else {
+    // Collapsed — revert any pending pick and re-enable confirm.
+    sheetUserPickedMs = null;
+    els.sheetBackdateError.textContent = "";
+    els.sheetBackdateInput.classList.remove("invalid");
+    els.sheetConfirm.disabled = false;
+    els.sheetBackdateTime.textContent = formatTime(new Date(sheetOpenedAtMs));
+  }
+}
+
+// Bind once at module load.
+els.sheetBackdateInput.addEventListener("input", onBackdateInput);
+els.sheetBackdateInput.addEventListener("change", onBackdateInput);
+els.sheetBackdateToggle.addEventListener("click", onBackdateToggle);
+
 function openActionSheet() {
   const now = new Date();
   const timeStr = formatTime(now);
+  els.sheetConfirm.disabled = false;
 
   if (store.status === "out") {
     els.sheetTitle.innerText = "Start Shift?";
@@ -130,6 +228,7 @@ function openActionSheet() {
     els.sheetConfirm.innerText = "CLOCK IN";
     els.sheetConfirm.className = "btn-main";
     els.sheetConfirm.onclick = () => performClockAction("in");
+    setupBackdatePicker("in", now);
   } else {
     const shift = store.findShift(store.currentShiftId);
     let durationStr = "0h 0m";
@@ -142,6 +241,7 @@ function openActionSheet() {
     els.sheetConfirm.innerText = "CLOCK OUT";
     els.sheetConfirm.className = "btn-main clock-out";
     els.sheetConfirm.onclick = () => performClockAction("out");
+    setupBackdatePicker("out", now);
   }
 
   els.sheetCancel.onclick = closeActionSheet;
@@ -186,6 +286,9 @@ function getMetaFields() {
 
 // --- Core Actions ---
 async function performClockAction(action) {
+  // Capture user-picked backdate (if any) BEFORE closing the sheet — closing
+  // tears down the picker state.
+  const pickedAtConfirm = sheetUserPickedMs;
   closeActionSheet();
   // Block background state-sync while we're mid-action (avoid race with cross-browser reconcile)
   markClockActionStart();
@@ -200,17 +303,26 @@ async function performClockAction(action) {
   // This shrinks the click→fetch window from up to 5s to <100ms, which is critical
   // for devices with aggressive battery optimization that kill the WebView the
   // moment the share sheet steals focus (Samsung in particular).
-  const now = new Date();
-  const timeStr = formatTime(now);
+  const realNow = new Date();
+  // If the user backdated, startedAt reflects that; otherwise it's realNow.
+  // Treat picks within 1s of realNow as "no edit" — avoids spurious tt_edits
+  // rows from sub-second formatting roundtrips.
+  const startedAt =
+    pickedAtConfirm != null && Math.abs(pickedAtConfirm - realNow.getTime()) > 1000
+      ? new Date(pickedAtConfirm)
+      : realNow;
+  const wasBackdated = startedAt !== realNow;
+  const timeStr = formatTime(startedAt);
   let msg = "";
   let syncItemId = null;
 
   if (action === "in") {
     const newShift = {
-      id: Date.now(),
-      dateObj: now.toISOString(),
+      // id stays realNow — keeps client_id-based dedup intact even when backdated.
+      id: realNow.getTime(),
+      dateObj: startedAt.toISOString(),
       type: "work",
-      in: now.getTime(),
+      in: startedAt.getTime(),
       out: null,
       duration: 0,
     };
@@ -228,15 +340,19 @@ async function performClockAction(action) {
       name: store.userName,
       action: "Clock In",
       id: newShift.id,
-      timestamp: now.toISOString(),
+      timestamp: startedAt.toISOString(),
       localTime: timeStr,
+      // Only included when user actually backdated — server uses presence
+      // (and difference from client_time) to decide whether to write a
+      // tt_edits "Backdated at clock-in" audit row.
+      ...(wasBackdated ? { actual_tap_time: realNow.toISOString() } : {}),
       ...getMetaFields(),
     });
     syncItemId = newShift.id;
   } else {
     const shift = store.findShift(store.currentShiftId);
     if (shift) {
-      shift.out = now.getTime();
+      shift.out = startedAt.getTime();
       shift.duration = Math.floor((shift.out - shift.in) / 60000);
 
       const outId = `${shift.id}_out`;
@@ -244,8 +360,9 @@ async function performClockAction(action) {
         name: store.userName,
         action: "Clock Out",
         id: shift.id,
-        timestamp: now.toISOString(),
+        timestamp: startedAt.toISOString(),
         localTime: timeStr,
+        ...(wasBackdated ? { actual_tap_time: realNow.toISOString() } : {}),
         ...getMetaFields(),
       });
       syncItemId = outId;
@@ -452,6 +569,16 @@ initComplianceUI();
 
 // Sync resumes after auth (see initAuth). On reconnect — retry queue.
 window.addEventListener("online", () => sync.processQueue());
+
+// Offline-drafts (Phase 3 of EDIT-FLOW-V2) — feature-flagged. On every app
+// load, expire 7+ day-old drafts (one toast per removed). Re-check on
+// visibility/online so the banner stays current after the tab is foregrounded
+// or the network returns. No-op when the flag is off.
+refreshDrafts();
+window.addEventListener("online", refreshDrafts);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshDrafts();
+});
 
 // If the queue has items but auth never completed (token getter still null),
 // re-run initAuth on visibility/online. This rescues the case where user

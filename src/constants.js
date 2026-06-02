@@ -12,6 +12,14 @@ export const QUOTES = [
 export const COMPLIANCE_MODE =
   import.meta.env.VITE_COMPLIANCE_MODE === "true";
 
+// Step 3 of EDIT-FLOW-V2: offline edit drafts. Default OFF for soak period.
+// When OFF: edits that hit network errors fail with a generic toast and no
+// draft is saved — exactly Step-2 behavior. When ON: a draft is persisted
+// to localStorage, banner appears in History, user explicitly applies or
+// discards when back online. See docs/EDIT-FLOW-V2.md Phase 3.
+export const OFFLINE_DRAFTS_ENABLED =
+  import.meta.env.VITE_OFFLINE_DRAFTS_ENABLED === "true";
+
 export const STORAGE_KEYS = {
   DATA: "tt_data",
   STATUS: "tt_status",
@@ -22,7 +30,13 @@ export const STORAGE_KEYS = {
   SYNC_QUEUE: "tt_syncQueue",
   GPS_CONSENT: "tt_gpsConsent",
   DISCLAIMER_SEEN: "tt_disclaimerSeen",
+  EDIT_DRAFTS: "tt_edit_drafts",
 };
+
+// Drafts older than this are silently discarded at app load.
+// At day 5+ the banner pulses and shows "(expires in N days)" suffix.
+export const EDIT_DRAFT_TTL_DAYS = 7;
+export const EDIT_DRAFT_WARN_DAYS = 5;
 
 export const PAY_PERIOD_TYPES = {
   SEMI_MONTHLY: "semi_monthly",

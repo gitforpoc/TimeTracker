@@ -216,6 +216,19 @@
       </div>
     </div>
 
+    <!-- Drafts Review modal (Phase 3 of EDIT-FLOW-V2). Opened from the
+         "⏳ N pending edit [Review ▸]" banner inside the History modal. Hidden
+         unless the offline-drafts feature flag is on AND drafts exist. -->
+    <div id="drafts-review-modal" class="modal hidden">
+      <div class="modal-header">
+        <h2>Pending Edits</h2>
+        <button id="drafts-review-close" class="close-btn" aria-label="Close pending edits">✕</button>
+      </div>
+      <div class="modal-content">
+        <div id="drafts-review-body"></div>
+      </div>
+    </div>
+
     <!-- Custom Modal for "Day Off" and Confirmations -->
     <div id="custom-dialog" class="modal hidden">
       <div class="dialog-box">
@@ -242,6 +255,20 @@
       <div class="sheet-handle"></div>
       <h3 id="sheet-title">Start Shift?</h3>
       <p id="sheet-desc">08:00 AM</p>
+
+      <!-- Backdate-at-tap picker. Hidden by default — 90%+ of users tap straight through. -->
+      <div id="sheet-backdate" class="sheet-backdate">
+        <div id="sheet-backdate-summary" class="sheet-backdate-summary">
+          <span id="sheet-backdate-label">Started at</span>
+          <strong id="sheet-backdate-time">--:--</strong>
+          <button type="button" id="sheet-backdate-toggle" class="sheet-backdate-toggle">◂ edit</button>
+        </div>
+        <div id="sheet-backdate-editor" class="sheet-backdate-editor hidden">
+          <input type="datetime-local" id="sheet-backdate-input" />
+          <div id="sheet-backdate-error" class="sheet-backdate-error" aria-live="polite"></div>
+        </div>
+      </div>
+
       <div class="sheet-actions">
         <button id="sheet-confirm" class="btn-main">CONFIRM</button>
         <button id="sheet-cancel" class="btn-sub">Cancel</button>

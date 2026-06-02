@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { checkClientTime } from "./submitGuard.js";
 
 export default async function handler(req, res) {
   // Allow CORS to work from any domain (just in case)
@@ -25,6 +26,7 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Missing Bearer token" });
   }
   const token = authHeader.replace("Bearer ", "");
+  let authedUserId = null;
   try {
     const authSupabase = createClient(
       process.env.SUPABASE_URL,
@@ -34,9 +36,20 @@ export default async function handler(req, res) {
     if (authError || !user) {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
+    authedUserId = user.id;
   } catch (e) {
     console.error("Auth check failed:", e);
     return res.status(503).json({ error: "Auth service unavailable" });
+  }
+
+  // --- Hygiene guard: reject client_time wildly off real time, only for
+  // Clock In / Clock Out. Day Off / Paid Off legitimately target other days.
+  // Bounds (5 min future / 12h past) match the client-side picker validation
+  // and the STALE_OPEN_SHIFT_HOURS concept — within 12h, legitimate offline
+  // syncs still pass through. ---
+  const guard = checkClientTime(req.body, Date.now());
+  if (!guard.ok) {
+    return res.status(guard.status).json({ error: guard.error });
   }
 
   // Get URLs and Keys
@@ -72,7 +85,7 @@ export default async function handler(req, res) {
   const taskSupabase = async () => {
     if (!SUPABASE_URL || !SUPABASE_KEY) return { skipped: true };
     const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
-    const { name, action, timestamp, localTime, type, targetId, comment, id, timezone, lat, lng } =
+    const { name, action, timestamp, localTime, type, targetId, comment, id, timezone, lat, lng, actual_tap_time } =
       req.body;
 
     // Sanitize name
@@ -115,6 +128,31 @@ export default async function handler(req, res) {
     }
 
     if (error) throw new Error(`Supabase Error: ${error.message}`);
+
+    // Best-effort: write a tt_edits "Backdated at..." audit row when the user
+    // backdated. Eligible only for Clock In / Clock Out (Day Off / Paid Off
+    // don't carry actual_tap_time). Failures are logged but don't break the
+    // submit — the user's clock event already succeeded.
+    if (
+      actual_tap_time &&
+      timestamp &&
+      (action === "Clock In" || action === "Clock Out") &&
+      Math.abs(new Date(actual_tap_time).getTime() - new Date(timestamp).getTime()) > 1000
+    ) {
+      try {
+        await writeBackdateAudit(supabase, {
+          userName: cleanName,
+          action,
+          chosenTimestamp: timestamp,
+          actualTapTime: actual_tap_time,
+          editorUserId: authedUserId,
+          editorName: cleanName,
+        });
+      } catch (e) {
+        console.error("Backdate audit write failed (non-fatal):", e?.message || e);
+      }
+    }
+
     return { success: true, data };
   };
 
@@ -150,4 +188,68 @@ export default async function handler(req, res) {
     google: googleResult.status === "fulfilled" ? "ok" : "failed",
     supabase: supabaseResult.status === "fulfilled" ? "ok" : "failed",
   });
+}
+
+/**
+ * Insert a tt_edits "Backdated at clock-in"/"...clock-out" audit row.
+ *
+ * Strategy:
+ *   - The tt_process_log_entry trigger has already updated/created the shift
+ *     (clock_in = chosenTimestamp for Clock In, clock_out = chosenTimestamp
+ *     for Clock Out). Look it up by user_name + that column.
+ *   - reason starts with the literal "Backdated at" so the client filter in
+ *     src/history.js can recognize this annotation and skip it for edit-quota
+ *     purposes (initial entry, not a correction).
+ *   - Errors are caller-handled (non-fatal — see taskSupabase try/catch).
+ */
+async function writeBackdateAudit(
+  supabase,
+  { userName, action, chosenTimestamp, actualTapTime, editorUserId, editorName }
+) {
+  const field = action === "Clock In" ? "clock_in" : "clock_out";
+  const reason = action === "Clock In" ? "Backdated at clock-in" : "Backdated at clock-out";
+
+  // Look up the shift just touched by the trigger. The trigger sets
+  // clock_in (Clock In) or clock_out (Clock Out) = chosenTimestamp.
+  let query = supabase
+    .from("tt_shifts")
+    .select("id")
+    .eq("user_name", userName);
+
+  if (action === "Clock In") {
+    query = query.eq("clock_in", chosenTimestamp);
+  } else {
+    query = query.eq("clock_out", chosenTimestamp);
+  }
+
+  const { data: shifts, error: lookupErr } = await query
+    .order("id", { ascending: false })
+    .limit(1);
+
+  if (lookupErr) {
+    console.error("Backdate audit: shift lookup failed:", lookupErr.message);
+    return;
+  }
+  if (!shifts || shifts.length === 0) {
+    console.error(
+      `Backdate audit: shift not found for ${userName} / ${field}=${chosenTimestamp}`
+    );
+    return;
+  }
+
+  const shiftId = shifts[0].id;
+  const { error: insertErr } = await supabase.from("tt_edits").insert([
+    {
+      shift_id: shiftId,
+      field_changed: field,
+      old_value: actualTapTime,
+      new_value: chosenTimestamp,
+      edited_by: editorUserId,
+      edited_by_name: editorName,
+      reason,
+    },
+  ]);
+  if (insertErr) {
+    console.error("Backdate audit: insert failed:", insertErr.message);
+  }
 }

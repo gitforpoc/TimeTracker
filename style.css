@@ -552,6 +552,152 @@ circle {
   border: 1px solid #fcd34d;
 }
 
+/* In-progress badge sits next to the EDIT button for live shifts (employee
+   can now edit clock_in mid-shift). Visual cue only — does NOT suppress EDIT. */
+.in-progress-badge {
+  color: #f59e0b;
+  font-weight: 600;
+  opacity: 1;
+}
+
+/* Inline 📝 edit-history expander on each history card. Mirrors the admin
+   Shift Log expander pattern but with light-theme styling. */
+.history-toggle-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.history-toggle-btn:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+.history-edits {
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: #f3f4f6;
+  border-left: 3px solid #d1d5db;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #4b5563;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.history-edits.hidden {
+  display: none;
+}
+.history-edit-row {
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* Per-field locked indicator inside the edit dialog. Shown under any input
+   the user has already consumed (per-field 1× edit limit). */
+.edit-field-locked-note {
+  font-size: 11px;
+  color: #9ca3af;
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Offline edit drafts banner (Phase 3 of EDIT-FLOW-V2). Shown at the top of
+   the History modal when there are pending edits awaiting confirm. The .pulse
+   modifier is added when any draft is in the 5-7 day expiry warning window. */
+.drafts-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 8px 0 12px;
+  color: #92400e;
+  font-size: 13px;
+  font-weight: 600;
+}
+.drafts-banner-icon { font-size: 16px; }
+.drafts-banner-text { flex: 1; }
+.drafts-review-btn {
+  background: #f59e0b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.drafts-review-btn:hover { background: #d97706; }
+.drafts-banner.pulse {
+  animation: drafts-pulse 1.6s ease-in-out infinite;
+}
+@keyframes drafts-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.0); }
+  50%      { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.25); }
+}
+
+/* Drafts Review modal body — list of pending edits with Apply/Discard. */
+.drafts-empty {
+  text-align: center;
+  color: var(--gray);
+  padding: 24px 12px;
+}
+.draft-row {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: white;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.draft-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.draft-row-date { font-weight: 600; color: #111827; font-size: 13px; }
+.draft-row-time { color: #4b5563; font-size: 12px; }
+.draft-row-age { margin-left: auto; color: #9ca3af; font-size: 11px; }
+.draft-row-changes {
+  background: #f9fafb;
+  border-left: 3px solid #d1d5db;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #374151;
+  font-family: var(--mono, ui-monospace, "SF Mono", Menlo, monospace);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.draft-row-reason { font-size: 12px; color: #6b7280; }
+.draft-row-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.draft-apply, .draft-discard {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.draft-apply { background: #2563eb; color: white; border-color: #2563eb; }
+.draft-apply:hover { background: #1d4ed8; }
+.draft-discard { background: white; color: #ef4444; border-color: #ef4444; }
+.draft-discard:hover { background: #fef2f2; }
+
 /* Form Elements */
 select {
   width: 100%;
@@ -807,4 +953,66 @@ select {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* Backdate-at-tap picker (action sheet) */
+.sheet-backdate {
+  width: 100%;
+  margin: -10px 0 18px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sheet-backdate-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--gray);
+}
+.sheet-backdate-summary strong {
+  color: var(--navy);
+  font-weight: 600;
+}
+.sheet-backdate-toggle {
+  background: none;
+  border: none;
+  color: var(--pink);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+.sheet-backdate-toggle:hover,
+.sheet-backdate-toggle:focus {
+  background: rgba(255, 57, 154, 0.08);
+  outline: none;
+}
+.sheet-backdate-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sheet-backdate-editor.hidden {
+  display: none;
+}
+.sheet-backdate-editor input[type="datetime-local"] {
+  width: 100%;
+  padding: 10px;
+  font-size: 15px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.sheet-backdate-editor input[type="datetime-local"].invalid {
+  border-color: #e11d48;
+}
+.sheet-backdate-error {
+  min-height: 16px;
+  font-size: 12px;
+  color: #e11d48;
+  text-align: center;
 }
