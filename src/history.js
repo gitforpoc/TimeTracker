@@ -335,18 +335,23 @@ async function refreshInBackground() {
     }
 
     if (isUserAuthenticated) {
-      const list = document.getElementById("history-list");
-      const syncNote = document.createElement("div");
-      syncNote.className = "sync-loading";
-      syncNote.textContent = "Syncing with server...";
-      list.prepend(syncNote);
+      // Show the indeterminate progress bar at the top of the modal —
+      // position:absolute so the shifts list never shifts (was the cause of the jank).
+      const progress = document.getElementById("sync-progress");
+      if (progress) {
+        progress.classList.add("active");
+        progress.setAttribute("aria-hidden", "false");
+      }
       try {
         await sync.processQueue();
         await fetchServerData();
       } catch (e) {
         console.error("History refresh failed:", e);
       } finally {
-        syncNote.remove();
+        if (progress) {
+          progress.classList.remove("active");
+          progress.setAttribute("aria-hidden", "true");
+        }
       }
       renderHistoryList();
       renderReport();
