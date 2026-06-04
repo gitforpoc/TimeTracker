@@ -9,6 +9,7 @@ import { initMap } from "./map.js";
 import { loadZones } from "./map.js";
 import { setupDashboardNav, initDashPeriod, loadDashboard } from "./dashboard.js";
 import { loadEmployeesTab, setupEmployeeEditListeners } from "./employees.js";
+import { setupAddShiftListeners } from "./addShiftModal.js";
 
 // --- Session state ---
 function persistState() {
@@ -206,6 +207,8 @@ function setupKeyboard() {
         closeEditModal();
       } else if (!$("#emp-edit-modal").classList.contains("hidden")) {
         $("#emp-edit-cancel").click();
+      } else if ($("#add-shift-modal") && !$("#add-shift-modal").classList.contains("hidden")) {
+        $("#add-shift-cancel").click();
       }
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -245,5 +248,6 @@ function setupTheme() {
 // --- Start ---
 setupEditListeners();
 setupEmployeeEditListeners();
+setupAddShiftListeners();
 setupTheme();
 init();

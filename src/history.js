@@ -31,6 +31,15 @@ const EDITABLE_FIELDS_OPEN = ["clock_in", "type", "comment"]; // open shifts: no
 // Used by classifyEdits/buildEditedFieldsMap/formatEditHistoryRow.
 const BACKDATE_REASON_PREFIX = "Backdated at";
 
+// Reason prefix used by /api/add-shift when a supervisor manually creates a
+// past shift on behalf of an employee. The companion sentinel
+// `field_changed === "created"` carries the same meaning. Quota-wise these
+// rows must NOT count against the employee's per-field 1× limit (the
+// employee didn't create them), but the shift IS supervisor-owned, so it
+// still triggers the "Adjusted" lockout (handled in classifyEdits).
+const MANUAL_ADD_REASON_PREFIX = "Manually added";
+const MANUAL_ADD_FIELD_SENTINEL = "created";
+
 // Per-field 1× edit limit. Outer key = shift ID (as string), inner Set = field
 // names ("clock_in", "clock_out", "type", "comment") already consumed by the
 // CURRENT user. Persisted to localStorage as { "<shift_id>": [field, ...], ... }.
@@ -113,6 +122,12 @@ export function buildEditedFieldsMap(edits, currentUserId) {
     if (!e) continue;
     if (e.edited_by !== currentUserId) continue;
     if (typeof e.reason === "string" && e.reason.startsWith(BACKDATE_REASON_PREFIX)) continue;
+    // Skip manually-added sentinel (the supervisor "create" row). Field is
+    // "created" — not one of the 4 quota fields — but we still defensively
+    // skip it here so a future change to the sentinel field name wouldn't
+    // silently start consuming quota.
+    if (e.field_changed === MANUAL_ADD_FIELD_SENTINEL) continue;
+    if (typeof e.reason === "string" && e.reason.startsWith(MANUAL_ADD_REASON_PREFIX)) continue;
     if (!e.field_changed) continue;
     const key = String(e.shift_id);
     let set = out.get(key);
@@ -158,6 +173,9 @@ export function formatEditHistoryRow(edit) {
   if (!edit) return "";
   const isBackdate =
     typeof edit.reason === "string" && edit.reason.startsWith(BACKDATE_REASON_PREFIX);
+  const isManualAdd =
+    edit.field_changed === MANUAL_ADD_FIELD_SENTINEL ||
+    (typeof edit.reason === "string" && edit.reason.startsWith(MANUAL_ADD_REASON_PREFIX));
   const editor = edit.edited_by_name || "Unknown";
   const when = formatHmsLocal(edit.created_at);
   const field = edit.field_changed || "";
@@ -168,6 +186,19 @@ export function formatEditHistoryRow(edit) {
     const tapped = formatHmsLocal(edit.old_value);
     const recorded = formatHmLocal(edit.new_value);
     return `Originally tapped at ${tapped}, recorded as ${recorded} (Backdated)`;
+  }
+
+  if (isManualAdd) {
+    // Reason format: "Manually added: <free text>". Strip the prefix so the
+    // human-readable bit reads cleanly.
+    const raw = typeof edit.reason === "string" ? edit.reason : "";
+    const note = raw.startsWith(MANUAL_ADD_REASON_PREFIX + ":")
+      ? raw.slice(MANUAL_ADD_REASON_PREFIX.length + 1).trim()
+      : raw.startsWith(MANUAL_ADD_REASON_PREFIX)
+        ? raw.slice(MANUAL_ADD_REASON_PREFIX.length).trim()
+        : raw.trim();
+    const notePart = note ? `, "${note}"` : "";
+    return `Added by ${editor} at ${when}${notePart}`;
   }
 
   const isTime = field === "clock_in" || field === "clock_out";
@@ -222,9 +253,15 @@ export function classifyEdits(edits, currentUserId) {
     const isBackdate =
       typeof e.reason === "string" && e.reason.startsWith(BACKDATE_REASON_PREFIX);
     if (isBackdate) continue; // initial-entry annotation, ignore for quota/lockout
+    const isManualAdd =
+      e.field_changed === MANUAL_ADD_FIELD_SENTINEL ||
+      (typeof e.reason === "string" && e.reason.startsWith(MANUAL_ADD_REASON_PREFIX));
     if (e.edited_by === currentUserId) {
+      // A manual-add row owned by the current user (admin viewing their own
+      // history) is NOT a field-quota event — skip the fieldsByShift add but
+      // still mark editedByMe so the UI can flag the row.
       editedByMe.add(e.shift_id);
-      if (e.field_changed) {
+      if (e.field_changed && !isManualAdd) {
         const key = String(e.shift_id);
         let set = fieldsByShift.get(key);
         if (!set) {
@@ -234,6 +271,9 @@ export function classifyEdits(edits, currentUserId) {
         set.add(e.field_changed);
       }
     } else {
+      // edited_by !== currentUserId — supervisor-touch lockout fires
+      // (employee can't edit). Manual-add fits cleanly here: a supervisor
+      // created the shift, so the employee shouldn't be able to edit it.
       adjustedByOthers.add(e.shift_id);
     }
   }

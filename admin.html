@@ -193,6 +193,7 @@
           <span id="shifts-hours"></span>
           <span id="shifts-avg"></span>
           <button id="copy-table" class="btn-sm">Copy as Table</button>
+          <button id="add-shift-btn" class="btn-sm btn-save" title="Add a missed shift (forgot to clock in/out)">+ Add Shift</button>
         </div>
 
         <div id="shifts-loading" class="loading-state hidden">
@@ -348,6 +349,63 @@
       <div class="modal-actions">
         <button id="emp-edit-cancel" class="btn-sm">Cancel</button>
         <button id="emp-edit-save" class="btn-sm btn-save" disabled>Save</button>
+      </div>
+    </div>
+
+    <!-- Add Shift Modal -->
+    <div id="add-shift-overlay" class="modal-overlay hidden"></div>
+    <div id="add-shift-modal" class="modal hidden">
+      <h3>Add Missed Shift</h3>
+      <div class="modal-fields">
+        <label>
+          Employee
+          <select id="add-shift-employee">
+            <option value="">— Select —</option>
+          </select>
+        </label>
+        <label>
+          Date
+          <input type="date" id="add-shift-date" />
+        </label>
+        <label>
+          Clock In
+          <input type="time" id="add-shift-in" />
+        </label>
+        <label>
+          Clock Out
+          <input type="time" id="add-shift-out" />
+        </label>
+        <label>
+          Type
+          <select id="add-shift-type">
+            <option value="work">Work</option>
+            <option value="paid_off">Paid Off</option>
+          </select>
+        </label>
+        <label>
+          Comment
+          <textarea id="add-shift-comment" placeholder="Optional" rows="2"></textarea>
+        </label>
+        <label>
+          Reason
+          <select id="add-shift-reason-preset">
+            <option value="Employee forgot to clock in">Employee forgot to clock in</option>
+            <option value="Employee forgot to clock out">Employee forgot to clock out</option>
+            <option value="Employee forgot both clock in and clock out">Employee forgot both clock in and clock out</option>
+            <option value="Phone died / no access">Phone died / no access</option>
+            <option value="Manual correction">Manual correction</option>
+            <option value="__other__">Other (specify…)</option>
+          </select>
+        </label>
+        <label id="add-shift-reason-other-wrap" class="hidden">
+          Reason (free text)
+          <textarea id="add-shift-reason-other" placeholder="Why is this shift being added?" rows="2"></textarea>
+        </label>
+        <div id="add-shift-error" class="add-shift-error hidden"></div>
+      </div>
+      <div class="modal-actions">
+        <button id="add-shift-cancel" class="btn-sm">Cancel</button>
+        <button id="add-shift-save" class="btn-sm btn-save">Add Shift</button>
       </div>
     </div>
 

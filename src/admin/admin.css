@@ -928,6 +928,19 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   pointer-events: none;
 }
 
+/* ---- Add Shift Modal ---- */
+
+.add-shift-error {
+  margin-top: 4px;
+  padding: 8px 10px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  border-radius: var(--radius);
+  color: #fca5a5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* ---- Confirm Modal ---- */
 
 .modal-confirm {

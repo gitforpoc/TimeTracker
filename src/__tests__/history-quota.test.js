@@ -245,3 +245,82 @@ describe("formatEditHistoryRow", () => {
     expect(row).toContain("Unknown"); // edited_by_name fallback
   });
 });
+
+describe("manually-added shift sentinel", () => {
+  const ME = "user-me";
+  const SUP = "user-supervisor";
+
+  it("classifyEdits marks supervisor-created shift as adjusted (employee can't edit)", () => {
+    const edits = [
+      {
+        shift_id: 42,
+        edited_by: SUP,
+        field_changed: "created",
+        reason: "Manually added: Employee forgot to clock in",
+      },
+    ];
+    const { editedByMe, adjustedByOthers, fieldsByShift } = classifyEdits(edits, ME);
+    expect(editedByMe.size).toBe(0);
+    expect(adjustedByOthers.has(42)).toBe(true);
+    // Sentinel must NOT pollute the per-field quota map
+    expect(fieldsByShift.size).toBe(0);
+  });
+
+  it("buildEditedFieldsMap ignores 'created' sentinel even when owned by current user", () => {
+    const edits = [
+      {
+        shift_id: 7,
+        edited_by: ME,
+        field_changed: "created",
+        reason: "Manually added: Manual correction",
+      },
+    ];
+    const map = buildEditedFieldsMap(edits, ME);
+    expect(map.size).toBe(0);
+  });
+
+  it("buildEditedFieldsMap also ignores rows whose reason starts with 'Manually added'", () => {
+    // Defensive: even if a future change uses a different field_changed value,
+    // the reason-prefix branch should still skip it.
+    const edits = [
+      {
+        shift_id: 8,
+        edited_by: ME,
+        field_changed: "clock_in",
+        reason: "Manually added: edge case",
+      },
+    ];
+    const map = buildEditedFieldsMap(edits, ME);
+    expect(map.size).toBe(0);
+  });
+
+  it("formatEditHistoryRow renders 'Added by ...' natural language for manual-add", () => {
+    const row = formatEditHistoryRow({
+      shift_id: 99,
+      field_changed: "created",
+      old_value: null,
+      new_value: '{"clock_in":"2026-06-03T17:00:00Z"}',
+      edited_by_name: "Pavel",
+      reason: "Manually added: Employee forgot to clock in",
+      created_at: "2026-06-04T18:30:00.000Z",
+    });
+    expect(row).toMatch(/^Added by Pavel at /);
+    expect(row).toContain('"Employee forgot to clock in"');
+    // Must NOT contain raw JSON snapshot or 'created' field label
+    expect(row).not.toContain('{"clock_in');
+    expect(row).not.toContain("(created)");
+  });
+
+  it("formatEditHistoryRow strips the 'Manually added:' prefix from the rendered note", () => {
+    const row = formatEditHistoryRow({
+      shift_id: 100,
+      field_changed: "created",
+      edited_by_name: "Yuri",
+      reason: "Manually added: Phone died / no access",
+      created_at: "2026-06-04T18:30:00.000Z",
+    });
+    expect(row).toContain("Yuri");
+    expect(row).toContain('"Phone died / no access"');
+    expect(row).not.toContain("Manually added:");
+  });
+});
