@@ -696,6 +696,18 @@ document.getElementById("check-update-btn").addEventListener("click", async () =
   }
 });
 
+// --- New-version indicator ---
+// When a fresh service worker is installed and waiting, surface it on the UI so the
+// user (who may keep the PWA open for days) knows to tap the existing Update button.
+// Amber dot on the History pill, banner inside the modal, pulse on the Update button.
+import("./updateChecker.js").then(({ watchForUpdates }) => {
+  watchForUpdates(() => {
+    document.getElementById("history-update-dot")?.classList.remove("hidden");
+    document.getElementById("update-banner")?.classList.remove("hidden");
+    document.getElementById("check-update-btn")?.classList.add("update-available");
+  });
+});
+
 // Expose for inline onclick handlers in HTML
 window.app = { addSpecialDay, copyReport, exportData, triggerRestore };
 
