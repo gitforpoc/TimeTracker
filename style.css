@@ -60,34 +60,42 @@ header {
 .admin-link.hidden {
   display: none;
 }
-/* History pill button */
+/* History pill button — solid navy with white text + subtle elevation.
+   Pairs visually with the adjacent .admin-link (both navy with white text), reading
+   as a cohesive "header actions" cluster. Hover state is gated to mouse-only devices
+   to avoid the iOS/Android sticky-hover bug where the first tap "selects" and the
+   second tap actually clicks. On touch, the user gets the :active feedback directly. */
 .history-pill {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   height: 44px;
-  padding: 0 14px;
+  padding: 0 16px;
   border: none;
   border-radius: 999px;
-  background: rgba(28, 28, 87, 0.08);
-  color: var(--navy);
+  background: var(--navy);
+  color: var(--white);
   font-family: inherit;
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
+  letter-spacing: 0.2px;
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
   touch-action: manipulation;
-  -webkit-tap-highlight-color: rgba(28, 28, 87, 0.16);
-  transition: background-color 120ms ease, transform 120ms ease;
-}
-.history-pill:hover {
-  background: rgba(28, 28, 87, 0.14);
+  -webkit-tap-highlight-color: transparent; /* we provide our own :active feedback */
+  box-shadow: 0 2px 8px rgba(28, 28, 87, 0.22);
+  transition: transform 110ms ease, box-shadow 110ms ease;
 }
 .history-pill:active {
-  background: rgba(28, 28, 87, 0.22);
-  transform: scale(0.96);
+  transform: scale(0.94);
+  box-shadow: 0 1px 4px rgba(28, 28, 87, 0.30);
+}
+@media (hover: hover) and (pointer: fine) {
+  .history-pill:hover {
+    box-shadow: 0 4px 14px rgba(28, 28, 87, 0.32);
+  }
 }
 .history-pill-icon {
   width: 18px;
@@ -508,8 +516,10 @@ circle {
   -webkit-tap-highlight-color: rgba(28, 28, 87, 0.16);
   transition: background-color 120ms ease, transform 120ms ease;
 }
-.close-btn:hover  { background: rgba(28, 28, 87, 0.08); }
 .close-btn:active { background: rgba(28, 28, 87, 0.18); transform: scale(0.92); }
+@media (hover: hover) and (pointer: fine) {
+  .close-btn:hover { background: rgba(28, 28, 87, 0.08); }
+}
 
 .modal-content {
   padding: 20px;
