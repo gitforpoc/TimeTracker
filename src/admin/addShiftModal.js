@@ -116,16 +116,25 @@ async function saveAddShift() {
   if (!outStr) return showError("Please enter a Clock Out time.");
 
   const clockInISO = composeLocalISO(dateStr, inStr);
-  const clockOutISO = composeLocalISO(dateStr, outStr);
+  let clockOutISO = composeLocalISO(dateStr, outStr);
   if (!clockInISO || !clockOutISO) {
     return showError("Invalid date or time.");
   }
 
-  // If clock out time <= clock in time on the same day, assume same-day-only
-  // (no overnight support from this UI) → reject. Admins can use Edit Shift
-  // for overnight corrections.
+  // Overnight-shift support: if Clock Out time is at or before Clock In time on
+  // the same chosen date, the shift crossed midnight — push Clock Out to the
+  // next day. Common case: evening shifts ending after 00:00 (e.g. Dusan's
+  // 13:02 → 02:34 next morning).
   if (new Date(clockOutISO).getTime() <= new Date(clockInISO).getTime()) {
-    return showError("Clock Out must be after Clock In on the same day.");
+    const outDate = new Date(`${dateStr}T${outStr}`);
+    outDate.setDate(outDate.getDate() + 1);
+    clockOutISO = outDate.toISOString();
+  }
+
+  // Defensive: after overnight fix should always be strictly after; reject if
+  // somehow not (e.g. malformed times) to avoid sending a bad payload.
+  if (new Date(clockOutISO).getTime() <= new Date(clockInISO).getTime()) {
+    return showError("Clock Out must be after Clock In.");
   }
 
   // Date not in the future (compare date strings to avoid tz off-by-one)

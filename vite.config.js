@@ -24,6 +24,20 @@ export default defineConfig({
       registerType: "autoUpdate",
       workbox: {
         globPatterns: ["**/*.{js,css,html,png}"],
+        // Exclude admin assets from precache: changes to admin code should NOT
+        // bump the SW manifest hash and trigger an "update available" prompt
+        // for the 22 main-app users who don't have admin access. Shared chunks
+        // (e.g. payPeriods, utils) stay precached — changes there legitimately
+        // affect both apps. See `src/admin/` directory: ~3 admins use it via
+        // web only, no offline support needed.
+        globIgnores: [
+          "admin.html",
+          "**/admin-*.js",
+          "**/admin-*.css",
+        ],
+        // Don't let the SW intercept /admin navigation requests — always serve
+        // fresh from network. Admin requires live Supabase data anyway.
+        navigateFallbackDenylist: [/^\/admin/],
         cleanupOutdatedCaches: true,
       },
       manifest: {
