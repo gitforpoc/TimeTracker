@@ -1151,3 +1151,37 @@ select {
   .history-pill-update-dot,
   .btn-outline.update-available { animation: none; }
 }
+
+/* Stale-queue banner: amber-tinted, same family as .update-banner but rendered
+   as a full-width button (the entire surface triggers a retry on tap). Sits at
+   the top of <main> so the user sees it before the timer/CLOCK IN button. */
+.stale-queue-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  margin: 0 0 16px 0;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  border-radius: 12px;
+  color: var(--navy);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  animation: stale-queue-pulse 2.4s ease-in-out infinite;
+}
+.stale-queue-banner.hidden { display: none; }
+.stale-queue-banner:hover { background: rgba(245, 158, 11, 0.18); }
+.stale-queue-banner:active { transform: scale(0.99); }
+.stale-queue-banner-icon { font-size: 22px; flex-shrink: 0; }
+.stale-queue-banner-text { display: flex; flex-direction: column; gap: 2px; line-height: 1.3; flex: 1; min-width: 0; }
+.stale-queue-banner-text strong { font-size: 14px; font-weight: 700; }
+.stale-queue-banner-text span   { font-size: 12px; color: var(--gray); }
+@keyframes stale-queue-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(245, 158, 11, 0.35); }
+  50%      { box-shadow: 0 0 0 4px rgba(245, 158, 11, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stale-queue-banner { animation: none; }
+}

@@ -92,6 +92,17 @@
       </header>
 
       <main id="dashboard">
+        <!-- Stale-queue banner — visible when one of (a) auth is broken or
+             (b) queued items are >1h old. Toggled by main.js via
+             sync.getStaleQueueSummary() / sync.isAuthBroken(). Click to retry. -->
+        <button id="stale-queue-banner" class="stale-queue-banner hidden" type="button">
+          <span class="stale-queue-banner-icon" aria-hidden="true">⚠</span>
+          <span class="stale-queue-banner-text">
+            <strong id="stale-queue-banner-title">Some events haven't synced</strong>
+            <span id="stale-queue-banner-detail">Tap to retry</span>
+          </span>
+        </button>
+
         <div class="user-display">
           <div class="input-wrapper">
             <span class="user-icon">👤</span>

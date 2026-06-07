@@ -1,7 +1,7 @@
 import "../style.css";
 import { QUOTES } from "./constants.js";
 import { store } from "./store.js";
-import { sync } from "./sync.js";
+import { sync, formatStaleBannerText } from "./sync.js";
 import { checkAuth } from "./auth.js";
 import { initTimer, startTimerLoop, stopTimerLoop } from "./timer.js";
 import { showDialog } from "./dialogs.js";
@@ -80,6 +80,10 @@ const els = {
   sheetBackdateInput: document.getElementById("sheet-backdate-input"),
   sheetBackdateError: document.getElementById("sheet-backdate-error"),
   restoreInput: document.getElementById("restore-file"),
+  // Stale-queue banner — visible when queue items are >1h old or auth is broken
+  staleBanner: document.getElementById("stale-queue-banner"),
+  staleBannerTitle: document.getElementById("stale-queue-banner-title"),
+  staleBannerDetail: document.getElementById("stale-queue-banner-detail"),
 };
 
 // --- Init modules ---
@@ -497,6 +501,10 @@ async function initAuth(retryCount = 0) {
           const { data: { session: s } } = await client.auth.getSession();
           return s?.access_token || null;
         });
+        // Wire session refresh so the queue can recover from 401 mid-stream
+        // (auth expired between two POSTs). Without this, every queued event
+        // would 401 forever and stay in localStorage until manual reload.
+        sync.setSessionRefresher(async () => client.auth.refreshSession());
         sync.processQueue();
 
         // Reconcile shift state with server — fixes stale localStorage when user
@@ -594,6 +602,71 @@ document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") recoverStuckQueue();
 });
 window.addEventListener("online", recoverStuckQueue);
+
+// --- Stale-queue banner ---
+// Surfaces a visible amber banner when (a) auth is broken (refresh failed) or
+// (b) queued items have been stuck for >1h. The small "N pending" chip inside
+// History is too easy to miss; this banner guarantees the user sees something
+// is wrong and can tap to retry.
+function refreshStaleBanner() {
+  if (!els.staleBanner) return;
+  const authBroken = sync.isAuthBroken();
+  const summary = sync.getStaleQueueSummary();
+  const text = formatStaleBannerText(summary, authBroken);
+  if (!text) {
+    els.staleBanner.classList.add("hidden");
+    return;
+  }
+  els.staleBannerTitle.textContent = text.title;
+  els.staleBannerDetail.textContent = text.detail;
+  els.staleBanner.classList.remove("hidden");
+}
+
+if (els.staleBanner) {
+  els.staleBanner.addEventListener("click", async () => {
+    if (sync.isAuthBroken()) {
+      // Auth-broken path: try a refresh; on success reload to re-init everything,
+      // on failure on production sync will redirect, on localhost just toast.
+      try {
+        const { getSupabaseClient } = await import("./auth.js");
+        const client = getSupabaseClient();
+        if (client) {
+          const { data, error } = await client.auth.refreshSession();
+          if (!error && data?.session) {
+            showToast("Sign-in restored — reloading...");
+            setTimeout(() => location.reload(), 600);
+            return;
+          }
+        }
+        if (location.hostname.endsWith("mpoctools.com")) {
+          const returnTo = encodeURIComponent(location.href);
+          location.replace(`https://mpoctools.com/login?return_to=${returnTo}`);
+        } else {
+          showToast("Sign-in expired — please reload");
+        }
+      } catch (e) {
+        console.error("[stale-banner] refresh failed:", e);
+        showToast("Sign-in expired — please reload");
+      }
+      return;
+    }
+    // Stale-queue path: trigger a retry and let refreshStaleBanner re-evaluate.
+    showToast("Retrying sync...");
+    await sync.processQueue();
+    refreshStaleBanner();
+  });
+}
+
+// Poll periodically so the banner appears even without user interaction
+// (e.g. PWA left open overnight).
+setInterval(refreshStaleBanner, 60_000);
+// And re-evaluate on the same lifecycle events that drive the queue itself.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") refreshStaleBanner();
+});
+window.addEventListener("online", refreshStaleBanner);
+// Initial paint
+refreshStaleBanner();
 
 els.autoShareToggle.checked = store.autoShare;
 els.autoShareToggle.addEventListener("change", (e) => {
