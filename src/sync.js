@@ -1,9 +1,10 @@
-import { STORAGE_KEYS } from "./constants.js";
+import { STORAGE_KEYS, FAILED_QUEUE_TTL_DAYS } from "./constants.js";
 
 // Items older than this in the queue indicate something is broken (auth expired,
 // permanent server error, etc). Banner UI surfaces this since the small "N pending"
 // chip is too easy to miss.
 const STALE_THRESHOLD_MS = 60 * 60 * 1000; // 1h
+const FAILED_TTL_MS = FAILED_QUEUE_TTL_DAYS * 24 * 60 * 60 * 1000;
 
 class SyncManager {
   constructor() {
@@ -24,6 +25,20 @@ class SyncManager {
     this._authBroken = false;
     // Per-item resolvers for awaitItem(). Keyed by item id, value is the resolve fn.
     this._waiters = new Map();
+    // Items the server permanently rejected (4xx). Held separately so they can
+    // never block the live queue; pruned after FAILED_QUEUE_TTL_DAYS.
+    const rawFailed = JSON.parse(
+      localStorage.getItem(STORAGE_KEYS.FAILED_QUEUE) || "[]"
+    );
+    this.failed = Array.isArray(rawFailed)
+      ? rawFailed.filter(
+          (it) =>
+            !it ||
+            typeof it.failed_at !== "number" ||
+            now - it.failed_at < FAILED_TTL_MS
+        )
+      : [];
+    if (this.failed.length !== rawFailed.length) this._saveFailed();
   }
 
   setTokenGetter(fn) {
@@ -105,32 +120,71 @@ class SyncManager {
             this._handleAuthBroken("401 after refresh retry");
             break;
           }
-          if (!response.ok) {
-            // Some other error after refresh — bail to preserve order, will
-            // retry on next visibility/online event.
-            break;
-          }
-        } else if (!response.ok) {
-          // Non-401 failure (5xx, network blip rendered as fetch reject, etc).
-          // Bail to preserve order — next visibility/online tick will retry.
-          break;
         }
 
-        this.queue = this.queue.filter((i) => i.id !== item.id);
-        this._saveQueue();
-        // Notify any awaitItem() callers that this item has shipped
-        const waiter = this._waiters.get(item.id);
-        if (waiter) {
-          waiter(true); // true = success
-          this._waiters.delete(item.id);
+        if (response.ok) {
+          this._completeItem(item.id, true);
+          continue;
         }
+
+        // Permanent client-side rejection (4xx other than 401): a malformed or
+        // out-of-bounds payload the server will NEVER accept on retry — e.g. a
+        // stale client_time. The old code `break`ed here, so a single such item
+        // sat at the head of the queue forever and blocked every event behind it
+        // (head-of-line blocking → "nothing ever syncs again"). Instead, set it
+        // aside in the failed queue and keep draining the rest. The worker sees a
+        // banner; the supervisor restores the event manually in admin.
+        if (response.status >= 400 && response.status < 500) {
+          this._quarantine(item, response.status);
+          continue;
+        }
+
+        // 5xx or other transient server error — preserve order, retry on the
+        // next visibility/online tick.
+        break;
       } catch (e) {
-        // Network error (fetch rejects). Stop on first failure (preserve order).
+        // Network error (fetch rejects). Transient — stop, retry next tick.
         console.warn("[sync] item failed, will retry:", e?.message || e);
         break;
       }
     }
     this.isSyncing = false;
+  }
+
+  /** Remove a successfully-sent item and resolve any awaitItem() waiter. */
+  _completeItem(id, success) {
+    this.queue = this.queue.filter((i) => i.id !== id);
+    this._saveQueue();
+    const waiter = this._waiters.get(id);
+    if (waiter) {
+      waiter(success);
+      this._waiters.delete(id);
+    }
+  }
+
+  /**
+   * Move a permanently-rejected item out of the live queue into `failed`.
+   * Keeps the rest of the queue flowing and surfaces the problem in the banner
+   * instead of losing the event silently.
+   */
+  _quarantine(item, status) {
+    this.queue = this.queue.filter((i) => i.id !== item.id);
+    this.failed.push({ ...item, failed_at: Date.now(), status });
+    // Bound growth — keep the most recent.
+    if (this.failed.length > 100) this.failed.shift();
+    this._saveFailed();
+    this._saveQueue();
+    console.error(
+      `[sync] item quarantined (HTTP ${status}) — needs manual fix:`,
+      item.id,
+      item.payload?.action
+    );
+    // A waiter (awaitItem) should unblock with failure, not hang to timeout.
+    const waiter = this._waiters.get(item.id);
+    if (waiter) {
+      waiter(false);
+      this._waiters.delete(item.id);
+    }
   }
 
   async _tryRefreshSession() {
@@ -211,6 +265,17 @@ class SyncManager {
     return this.queue.length;
   }
 
+  /** Count of permanently-rejected items awaiting manual fix by a supervisor. */
+  get failedCount() {
+    return this.failed.length;
+  }
+
+  /** Clear the quarantine (e.g. after the supervisor has restored the events). */
+  clearFailed() {
+    this.failed = [];
+    this._saveFailed();
+  }
+
   /** Returns Set of client IDs that haven't synced yet */
   get pendingIds() {
     return new Set(this.queue.map((item) => item.id));
@@ -241,6 +306,11 @@ class SyncManager {
     this._notifyUI();
   }
 
+  _saveFailed() {
+    localStorage.setItem(STORAGE_KEYS.FAILED_QUEUE, JSON.stringify(this.failed));
+    this._notifyUI();
+  }
+
   // Notify UI about queue changes (pending indicator)
   _notifyUI() {
     if (typeof document === "undefined") return;
@@ -259,11 +329,20 @@ class SyncManager {
  * Pure helper for banner copy. Pulled out for unit testability — DOM wiring is
  * too brittle to test reliably in this setup.
  */
-export function formatStaleBannerText(summary, authBroken) {
+export function formatStaleBannerText(summary, authBroken, failedCount = 0) {
   if (authBroken) {
     return {
       title: "Sign-in expired",
       detail: "Tap to refresh.",
+    };
+  }
+  if (failedCount > 0) {
+    // Permanently-rejected events can't be retried away — they need a manual
+    // fix. Tell the worker so it stops being a silent loss.
+    const noun = failedCount === 1 ? "event" : "events";
+    return {
+      title: `${failedCount} ${noun} couldn't sync — tell your supervisor`,
+      detail: "These need a manual fix in the admin dashboard.",
     };
   }
   if (!summary || !summary.stale) {

@@ -27,6 +27,7 @@ describe("SyncManager", () => {
   beforeEach(() => {
     localStorage.clear();
     sync.queue = [];
+    sync.failed = [];
     sync.isSyncing = false;
     sync._getToken = null;
     sync._refreshSession = null;
@@ -125,6 +126,82 @@ describe("SyncManager", () => {
         keepalive: true,
         body: JSON.stringify(payload),
       });
+    });
+  });
+
+  describe("permanent-failure quarantine (no head-of-line block)", () => {
+    it("quarantines a 400 item and keeps draining the rest of the queue", async () => {
+      // item 1 → 400 (poison pill), item 2 → ok. The poison item must NOT block
+      // item 2 (the old code `break`ed and stuck the whole queue forever).
+      fetchMock
+        .mockResolvedValueOnce({ ok: false, status: 400 })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      sync.setTokenGetter(tokenGetter);
+      sync.queue = [
+        { id: "1", payload: { action: "Clock In" } },
+        { id: "2", payload: { action: "Clock Out" } },
+      ];
+
+      await sync.processQueue();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(sync.queue).toHaveLength(0);
+      expect(sync.failedCount).toBe(1);
+      expect(sync.failed[0].id).toBe("1");
+      expect(sync.failed[0].status).toBe(400);
+    });
+
+    it("persists the failed queue to localStorage", async () => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 422 });
+      sync.setTokenGetter(tokenGetter);
+      sync.queue = [{ id: "x", payload: {} }];
+
+      await sync.processQueue();
+
+      const saved = JSON.parse(localStorage.getItem("tt_failedQueue"));
+      expect(saved).toHaveLength(1);
+      expect(saved[0].id).toBe("x");
+    });
+
+    it("still breaks (preserves order) on a 5xx — transient, retry later", async () => {
+      fetchMock
+        .mockResolvedValueOnce({ ok: true, status: 200 })
+        .mockResolvedValueOnce({ ok: false, status: 503 });
+      sync.setTokenGetter(tokenGetter);
+      sync.queue = [
+        { id: "1", payload: {} },
+        { id: "2", payload: {} },
+        { id: "3", payload: {} },
+      ];
+
+      await sync.processQueue();
+
+      // 1 sent, 2 got 503 (stays), 3 not attempted. Nothing quarantined.
+      expect(sync.queue.map((i) => i.id)).toEqual(["2", "3"]);
+      expect(sync.failedCount).toBe(0);
+    });
+
+    it("resolves awaitItem(false) when an item is quarantined", async () => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 400 });
+      sync.setTokenGetter(tokenGetter);
+      sync.queue = [{ id: "wait-me", payload: {} }];
+
+      const waitPromise = sync.awaitItem("wait-me", 1000);
+      await sync.processQueue();
+      await expect(waitPromise).resolves.toBe(false);
+    });
+
+    it("clearFailed empties the quarantine", async () => {
+      fetchMock.mockResolvedValueOnce({ ok: false, status: 400 });
+      sync.setTokenGetter(tokenGetter);
+      sync.queue = [{ id: "1", payload: {} }];
+      await sync.processQueue();
+      expect(sync.failedCount).toBe(1);
+
+      sync.clearFailed();
+      expect(sync.failedCount).toBe(0);
+      expect(JSON.parse(localStorage.getItem("tt_failedQueue"))).toHaveLength(0);
     });
   });
 
@@ -382,6 +459,21 @@ describe("SyncManager", () => {
       expect(one.title).toContain("1 item");
       expect(one.title).not.toContain("items");
       expect(many.title).toContain("5 items");
+    });
+
+    it("surfaces quarantined (failed) events with supervisor copy", () => {
+      const text = formatStaleBannerText({ stale: false, oldestMs: 0, count: 0 }, false, 2);
+      expect(text.title).toContain("2 events");
+      expect(text.title.toLowerCase()).toContain("supervisor");
+    });
+
+    it("auth-broken takes priority over failed count", () => {
+      const text = formatStaleBannerText({ stale: false, oldestMs: 0, count: 0 }, true, 3);
+      expect(text.title.toLowerCase()).toContain("sign-in expired");
+    });
+
+    it("defaults failedCount to 0 (back-compat with 2-arg calls)", () => {
+      expect(formatStaleBannerText({ stale: false, oldestMs: 0, count: 0 }, false)).toBeNull();
     });
   });
 });

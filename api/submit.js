@@ -42,11 +42,12 @@ export default async function handler(req, res) {
     return res.status(503).json({ error: "Auth service unavailable" });
   }
 
-  // --- Hygiene guard: reject client_time wildly off real time, only for
-  // Clock In / Clock Out. Day Off / Paid Off legitimately target other days.
-  // Bounds (5 min future / 12h past) match the client-side picker validation
-  // and the STALE_OPEN_SHIFT_HOURS concept — within 12h, legitimate offline
-  // syncs still pass through. ---
+  // --- Hygiene guard (Clock In / Clock Out only; Day Off / Paid Off target
+  // arbitrary days). Bounds the DELIBERATE backdate (vs actual_tap_time, ≤12h)
+  // and rejects only a clearly broken device clock (>35d past) or a future
+  // time. It deliberately does NOT reject by sync delay — a real-time tap that
+  // syncs hours/days late is correct data and must pass, otherwise it becomes a
+  // permanently-rejected poison pill that blocks the queue. See submitGuard.js. ---
   const guard = checkClientTime(req.body, Date.now());
   if (!guard.ok) {
     return res.status(guard.status).json({ error: guard.error });

@@ -612,7 +612,7 @@ function refreshStaleBanner() {
   if (!els.staleBanner) return;
   const authBroken = sync.isAuthBroken();
   const summary = sync.getStaleQueueSummary();
-  const text = formatStaleBannerText(summary, authBroken);
+  const text = formatStaleBannerText(summary, authBroken, sync.failedCount);
   if (!text) {
     els.staleBanner.classList.add("hidden");
     return;
@@ -766,6 +766,38 @@ document.getElementById("check-update-btn").addEventListener("click", async () =
   } catch (e) {
     // Fallback: just reload
     location.reload();
+  }
+});
+
+// --- Send Diagnostics ---
+// One-tap device/sync report → /api/diag (unauthenticated, so it arrives even
+// when the user's session is broken). Falls back to clipboard + share only if
+// even that POST can't get out (truly offline).
+document.getElementById("diag-btn")?.addEventListener("click", async () => {
+  const btn = document.getElementById("diag-btn");
+  const original = btn.textContent;
+  btn.textContent = "Sending…";
+  btn.disabled = true;
+  try {
+    const { runDiagnostics } = await import("./diagnostics.js");
+    const { delivered, report, text } = await runDiagnostics();
+    if (delivered) {
+      const skew = report.connectivity?.clockSkewSec;
+      const skewNote =
+        typeof skew === "number" && Math.abs(skew) > 120 ? ` (clock off ${skew}s)` : "";
+      showToast(`Diagnostics sent ✓${skewNote}`);
+    } else {
+      // Couldn't reach the server — hand the report to the user to send manually.
+      copyToClipboard(text);
+      showToast("Couldn't send — report copied, please paste to your supervisor");
+      if (navigator.share) shareText(text);
+    }
+  } catch (e) {
+    console.error("[diag] failed:", e);
+    showToast("Diagnostics failed — please try again");
+  } finally {
+    btn.textContent = original;
+    btn.disabled = false;
   }
 });
 

@@ -28,10 +28,18 @@ export const STORAGE_KEYS = {
   AUTO_SHARE: "tt_autoShare",
   GEO_ENABLED: "tt_geoEnabled",
   SYNC_QUEUE: "tt_syncQueue",
+  // Items the server permanently rejected (4xx). Set aside so one bad item
+  // can't block the whole queue forever; surfaced in the stale banner so a
+  // worker knows those events need a manual fix by the supervisor.
+  FAILED_QUEUE: "tt_failedQueue",
   GPS_CONSENT: "tt_gpsConsent",
   DISCLAIMER_SEEN: "tt_disclaimerSeen",
   EDIT_DRAFTS: "tt_edit_drafts",
 };
+
+// Quarantined (permanently-failed) sync items older than this are pruned at
+// app load — by then the supervisor has restored them manually in admin.
+export const FAILED_QUEUE_TTL_DAYS = 7;
 
 // Drafts older than this are silently discarded at app load.
 // At day 5+ the banner pulses and shows "(expires in N days)" suffix.
