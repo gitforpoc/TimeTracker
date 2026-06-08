@@ -15,6 +15,22 @@ import { createClient } from "@supabase/supabase-js";
 
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB — a report is ~1-3 KB
 
+/**
+ * Compute device-vs-server clock skew in seconds from the client's snapshot
+ * time and the server's receive time. Positive = device clock AHEAD of server.
+ *
+ * The client-side connectivity block (RTT/status/skew) is null in the stored
+ * report because those are only known AFTER the POST body was already sent.
+ * Deriving skew here is robust and catches the wrong-device-clock cases that
+ * trip the /api/submit hygiene guard. Includes sub-second upload latency —
+ * negligible vs the minute/hour skews we care about. Returns null if unparseable.
+ */
+export function serverClockSkewSec(clientTimeIso, serverNowMs) {
+  const clientMs = clientTimeIso ? new Date(clientTimeIso).getTime() : NaN;
+  if (!Number.isFinite(clientMs) || !Number.isFinite(serverNowMs)) return null;
+  return Math.round((clientMs - serverNowMs) / 1000);
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", true);
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -77,8 +93,20 @@ export default async function handler(req, res) {
     typeof report.device?.online === "boolean" ? report.device.online : null;
 
   // Stamp the server-resolved truth so the client can't lie about these.
+  const serverNowMs = Date.now();
   report.tokenValidServer = tokenValid;
-  report.serverReceivedAt = new Date().toISOString();
+  report.serverReceivedAt = new Date(serverNowMs).toISOString();
+  // Persist clock skew server-side (the client's connectivity block never makes
+  // it into the stored body — see serverClockSkewSec docs).
+  const skew = serverClockSkewSec(report.clientTime, serverNowMs);
+  if (skew !== null) {
+    report.connectivity =
+      report.connectivity && typeof report.connectivity === "object"
+        ? report.connectivity
+        : {};
+    report.connectivity.serverClockSkewSec = skew;
+    report.connectivity.diagPostStatus = 200; // it reached us, by definition
+  }
 
   const { error: insertErr } = await supabase.from("tt_diagnostics").insert([
     {

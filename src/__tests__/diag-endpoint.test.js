@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import handler from "../../api/diag.js";
+import handler, { serverClockSkewSec } from "../../api/diag.js";
 
 function mockRes() {
   return {
@@ -68,6 +68,28 @@ describe("/api/diag guard branches", () => {
     const big = { app: "timetracker", blob: "x".repeat(40 * 1024) };
     await handler({ method: "POST", headers: {}, body: { report: big } }, res);
     expect(res.statusCode).toBe(413);
+  });
+
+  it("computes clock skew: 0 when client == server", () => {
+    const now = 1_700_000_000_000;
+    expect(serverClockSkewSec(new Date(now).toISOString(), now)).toBe(0);
+  });
+
+  it("computes clock skew: positive when device clock is ahead", () => {
+    const now = 1_700_000_000_000;
+    const clientAhead = new Date(now + 90_000).toISOString(); // device +90s
+    expect(serverClockSkewSec(clientAhead, now)).toBe(90);
+  });
+
+  it("computes clock skew: negative when device clock is behind", () => {
+    const now = 1_700_000_000_000;
+    const clientBehind = new Date(now - 3600_000).toISOString(); // device -1h
+    expect(serverClockSkewSec(clientBehind, now)).toBe(-3600);
+  });
+
+  it("clock skew is null for unparseable/missing client time", () => {
+    expect(serverClockSkewSec(undefined, 1_700_000_000_000)).toBeNull();
+    expect(serverClockSkewSec("not-a-date", 1_700_000_000_000)).toBeNull();
   });
 
   it("passes all guards on a valid report (then 500: no backend in unit env)", async () => {
