@@ -2,6 +2,37 @@ import { state } from "./state.js";
 import { $, $$, esc, formatDateShort, formatTimeShort, showToast } from "./helpers.js";
 import { getZoneColor, geoIcon, geoZoneLabel } from "./geo.js";
 
+// Classify a shift's audit trail into a glanceable badge + row-tint kind.
+// Keeps the `edit-indicator` class + data-id so the existing click-to-expand history handler
+// (editModal.js) still fires. Returns { kind, badge } — kind drives a subtle row tint.
+//  - manual   ➕ supervisor-backfilled via /api/add-shift (sentinel field_changed="created")
+//  - adjusted 👮 edited by someone other than the shift's own employee (supervisor correction)
+//  - edited   ✏️ self-edit only
+// Auto "Backdated at..." annotation rows are NOT human corrections — they don't earn a badge.
+function classifyShiftEdit(shift) {
+  const edits = state.editsMap[shift.id];
+  if (!edits || edits.length === 0) return { kind: null, badge: "" };
+
+  const created = edits.find((e) => e.field_changed === "created");
+  if (created) {
+    const tip = `Manually added by ${created.edited_by_name || "supervisor"}${created.reason ? ` — ${created.reason}` : ""}`;
+    return { kind: "manual", badge: `<span class="edit-indicator badge-manual" data-id="${shift.id}" title="${esc(tip)}">➕ Manual</span>` };
+  }
+
+  const realEdits = edits.filter((e) => !(e.reason || "").startsWith("Backdated at"));
+  if (realEdits.length === 0) return { kind: null, badge: "" };
+
+  const last = realEdits[realEdits.length - 1];
+  const when = formatDateShort(last.created_at);
+  const supEdit = realEdits.find((e) => e.edited_by_name && e.edited_by_name !== shift.user_name);
+  if (supEdit) {
+    const tip = `Adjusted by ${supEdit.edited_by_name} on ${when}${last.reason ? ` — ${last.reason}` : ""}`;
+    return { kind: "adjusted", badge: `<span class="edit-indicator badge-adjusted" data-id="${shift.id}" title="${esc(tip)}">👮 Adjusted</span>` };
+  }
+  const tip = `Edited by ${last.edited_by_name || shift.user_name} on ${when}${last.reason ? ` — ${last.reason}` : ""}`;
+  return { kind: "edited", badge: `<span class="edit-indicator badge-edited" data-id="${shift.id}" title="${esc(tip)}">✏️ Edited</span>` };
+}
+
 // --- Shifts ---
 export function setupFilters() {
   $("#apply-filters").addEventListener("click", () => {
@@ -200,10 +231,13 @@ function renderShiftsSummary() {
   }
   empty.classList.add("hidden");
 
-  // Aggregate by employee
+  // Aggregate by employee. Zero-minute micro-shifts (closed work shift, 0 min = double-tap) are
+  // kept in the data but excluded from counts/avg — same rule as the detail view.
+  const isMicroShift = (s) => s.type === "work" && s.clock_out && (s.duration_minutes || 0) === 0;
   const stats = {};
   state.shiftsData.forEach((s) => {
     if (!stats[s.user_name]) stats[s.user_name] = { shifts: 0, minutes: 0, workShifts: 0 };
+    if (isMicroShift(s)) return; // keep the row, don't count it
     stats[s.user_name].shifts++;
     if (s.type === "work") {
       stats[s.user_name].minutes += s.duration_minutes || 0;
@@ -295,7 +329,15 @@ export function renderShifts() {
     ? Math.round(totalMinutes / shiftsWithDuration.length)
     : 0;
 
-  $("#shifts-count").textContent = `${state.shiftsData.length} shifts`;
+  // Count excludes zero-minute micro-shifts (closed work shift, 0 min = accidental double-tap).
+  // The data is KEPT (still listed/editable), just not padding the count. Open shifts (0 min but
+  // real/ongoing) and day_off/paid_off rows still count.
+  const isMicroShift = (s) => s.type === "work" && s.clock_out && (s.duration_minutes || 0) === 0;
+  const microCount = state.shiftsData.filter(isMicroShift).length;
+  const countedShifts = state.shiftsData.length - microCount;
+  $("#shifts-count").textContent = microCount > 0
+    ? `${countedShifts} shifts (+${microCount} micro)`
+    : `${countedShifts} shifts`;
   $("#shifts-hours").textContent = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m total`;
   $("#shifts-avg").textContent = avgMinutes > 0
     ? `${Math.floor(avgMinutes / 60)}h ${avgMinutes % 60}m avg`
@@ -336,9 +378,13 @@ export function renderShifts() {
       const typeLabel =
         s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "";
 
-      const rowClass = s.type !== 'work' ? 'row-special'
-        : s.duration_minutes > 720 ? 'row-overtime'
-        : s.duration_minutes > 540 ? 'row-long' : '';
+      const edit = classifyShiftEdit(s);
+      const rowClass = [
+        s.type !== 'work' ? 'row-special'
+          : s.duration_minutes > 720 ? 'row-overtime'
+          : s.duration_minutes > 540 ? 'row-long' : '',
+        edit.kind ? `row-edit-${edit.kind}` : '',
+      ].filter(Boolean).join(' ');
 
       return `<tr class="${rowClass}" data-id="${s.id}">
         <td>${date}</td>
@@ -350,7 +396,7 @@ export function renderShifts() {
         <td>${esc(s.comment)}</td>
         <td>
           ${geoIcon(s.id)}
-          ${state.editsMap[s.id] ? `<span class="edit-indicator" data-id="${s.id}" title="Edited">✏️</span>` : ""}
+          ${edit.badge}
           <button class="btn-edit" data-id="${s.id}">Edit</button>
         </td>
       </tr>`;
@@ -369,9 +415,13 @@ export function renderShifts() {
       const typeLabel =
         s.type === "day_off" ? "Day Off" : s.type === "paid_off" ? "Paid Off" : "Work";
 
-      const cardClass = s.type !== 'work' ? 'card-special'
-        : s.duration_minutes > 720 ? 'card-overtime'
-        : s.duration_minutes > 540 ? 'card-long' : '';
+      const edit = classifyShiftEdit(s);
+      const cardClass = [
+        s.type !== 'work' ? 'card-special'
+          : s.duration_minutes > 720 ? 'card-overtime'
+          : s.duration_minutes > 540 ? 'card-long' : '',
+        edit.kind ? `card-edit-${edit.kind}` : '',
+      ].filter(Boolean).join(' ');
 
       return `<div class="shift-card ${cardClass}" data-id="${s.id}">
         <div class="card-header">
@@ -391,6 +441,7 @@ export function renderShifts() {
         ${s.comment ? `<div class="card-comment">${esc(s.comment)}</div>` : ""}
         <div class="card-actions">
           ${geoIcon(s.id)}
+          ${edit.badge}
           <button class="btn-edit card-edit" data-id="${s.id}">Edit</button>
         </div>
       </div>`;

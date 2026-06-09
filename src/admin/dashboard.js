@@ -12,6 +12,7 @@ import {
 import { SOFT_CAP_HOURS } from "../constants.js";
 import { loadSchedule } from "./schedule.js";
 import { forecastEmployeeHours } from "./forecast.js";
+import { findOverlappingShifts, findMicroShifts } from "./anomalies.js";
 
 const PERIOD_TYPE_KEY = "tt_admin_period_type";
 const CUSTOM_PERIOD_KEY = "tt_admin_custom_period";
@@ -400,6 +401,27 @@ export async function loadDashboard() {
   rows.filter((s) => s.type === "work" && !s.clock_out && (now - new Date(s.clock_in)) / 60000 > 840).forEach((s) => {
     alerts.push({ type: "danger", icon: "🔴", text: `${esc(s.user_name)} has an open shift since ${formatDateShort(s.clock_in)} ${formatTimeShort(s.clock_in)}` });
   });
+
+  // Data-integrity anomalies (visible period): overlapping/duplicate shifts + zero-minute micro-shifts.
+  // These used to be invisible — duplicates (a late-syncing real tap colliding with a manual backfill)
+  // got silently summed into payroll, inflating hours at OT rates. Surfacing them here keeps the
+  // "all good" empty state honest. Inactive (soft-deleted) employees are excluded.
+  const inactiveNames = new Set(settings.filter((s) => !isActive(s)).map((s) => s.user_name));
+  const activeWork = workShifts.filter((s) => !inactiveNames.has(s.user_name));
+
+  const overlaps = findOverlappingShifts(activeWork);
+  if (overlaps.count > 0) {
+    const who = `${overlaps.names.slice(0, 3).map(esc).join(", ")}${overlaps.names.length > 3 ? "…" : ""}`;
+    // Overlaps are the highest-signal anomaly (real payroll impact) — surface at the top.
+    alerts.unshift({ type: "danger", icon: "🔴", text: `${overlaps.count} overlapping shift${overlaps.count > 1 ? "s" : ""} (${who}) — possible duplicates` });
+  }
+
+  const micro = findMicroShifts(activeWork);
+  if (micro.count > 0) {
+    const who = `${micro.names.slice(0, 3).map(esc).join(", ")}${micro.names.length > 3 ? "…" : ""}`;
+    alerts.push({ type: "warn", icon: "⚪", text: `${micro.count} zero-minute micro-shift${micro.count > 1 ? "s" : ""} (${who}) — likely double-taps` });
+  }
+
   $("#dash-alerts").innerHTML = alerts.length === 0
     ? '<div class="dash-alert-none">No anomalies — all good</div>'
     : alerts.map((a) => `<div class="dash-alert alert-${a.type}"><span class="dash-alert-icon">${a.icon}</span> ${a.text}</div>`).join("");

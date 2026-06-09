@@ -14,6 +14,7 @@ import { createClient } from "@supabase/supabase-js";
 // from any public surface. Add a shared key later if it ever gets hit.
 
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB — a report is ~1-3 KB
+const DIAG_RETENTION_DAYS = 30;   // throwaway debug data — auto-pruned on each insert
 
 /**
  * Compute device-vs-server clock skew in seconds from the client's snapshot
@@ -121,6 +122,19 @@ export default async function handler(req, res) {
   if (insertErr) {
     console.error("Diagnostics insert failed:", insertErr.message);
     return res.status(500).json({ ok: false, error: "Could not store report" });
+  }
+
+  // Opportunistic retention: prune reports older than the TTL. Diagnostics are
+  // throwaway debug data (no legal retention like tt_logs/tt_shifts). Best-effort
+  // and self-maintaining — no cron needed; a prune failure must not fail the
+  // submit (the report we just stored is what matters).
+  try {
+    const cutoff = new Date(
+      serverNowMs - DIAG_RETENTION_DAYS * 24 * 60 * 60 * 1000
+    ).toISOString();
+    await supabase.from("tt_diagnostics").delete().lt("created_at", cutoff);
+  } catch (e) {
+    console.error("Diagnostics prune failed (non-fatal):", e?.message || e);
   }
 
   // serverTime lets the client compute device clock skew (accounting for RTT).

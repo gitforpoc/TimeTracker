@@ -27,6 +27,7 @@ export default async function handler(req, res) {
   }
   const token = authHeader.replace("Bearer ", "");
   let authedUserId = null;
+  let authedName = null;
   try {
     const authSupabase = createClient(
       process.env.SUPABASE_URL,
@@ -37,9 +38,32 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Invalid or expired token" });
     }
     authedUserId = user.id;
+    // Resolve the caller's real name from their profile. /api/submit is always
+    // self-service (employees clock their OWN events; supervisors use
+    // /api/add-shift). We enforce the event's name = this name below.
+    const { data: profile } = await authSupabase
+      .from("profiles")
+      .select("name")
+      .eq("id", authedUserId)
+      .single();
+    if (profile?.name) authedName = profile.name;
   } catch (e) {
     console.error("Auth check failed:", e);
     return res.status(503).json({ error: "Auth service unavailable" });
+  }
+
+  // --- Identity enforcement: the clock event is written under the AUTHENTICATED
+  // user's name, never a client-supplied one. Without this, any valid token could
+  // POST a shift under someone else's name (payroll fraud). A properly-onboarded
+  // user always has profiles.name; if we can't resolve it, reject as RETRYABLE
+  // (503 → sync queue retries) rather than trusting the body. ---
+  if (!authedName) {
+    return res.status(503).json({ error: "Could not verify account name" });
+  }
+  if (req.body && typeof req.body === "object") {
+    // Override on the shared req.body so BOTH the Supabase write and the Google
+    // Sheets mirror (which serializes req.body) use the verified name.
+    req.body.name = authedName;
   }
 
   // --- Hygiene guard (Clock In / Clock Out only; Day Off / Paid Off target
@@ -168,6 +192,9 @@ export default async function handler(req, res) {
     googleResult.status === "rejected" &&
     supabaseResult.status === "rejected"
   ) {
+    // Full reasons go to the server log only — never returned to the client
+    // (they can carry Postgres column names / RLS hints). The client just needs
+    // to know it failed so the sync queue retries.
     console.error(
       "All backends failed:",
       googleResult.reason,
@@ -175,11 +202,7 @@ export default async function handler(req, res) {
     );
     return res.status(500).json({
       result: "error",
-      message: "Both Google Sheets and Supabase sync failed.",
-      errors: {
-        google: googleResult.reason?.toString(),
-        supabase: supabaseResult.reason?.toString(),
-      },
+      message: "Sync failed — will retry.",
     });
   }
 
