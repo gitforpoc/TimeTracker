@@ -108,17 +108,19 @@ export function closeEditModal() {
 function confirmBeforeSave() {
   // Build change summary
   const changes = [];
+  // esc() everything interpolated here — comment especially is employee-written
+  // text straight from the server (stored-XSS vector in the admin context).
   if ($("#edit-clock-in").value !== state.editOriginal.clockIn) {
-    changes.push(`<strong>Clock In:</strong> ${state.editOriginal.clockIn || "(empty)"} → ${$("#edit-clock-in").value || "(empty)"}`);
+    changes.push(`<strong>Clock In:</strong> ${esc(state.editOriginal.clockIn) || "(empty)"} → ${esc($("#edit-clock-in").value) || "(empty)"}`);
   }
   if ($("#edit-clock-out").value !== state.editOriginal.clockOut) {
-    changes.push(`<strong>Clock Out:</strong> ${state.editOriginal.clockOut || "(empty)"} → ${$("#edit-clock-out").value || "(empty)"}`);
+    changes.push(`<strong>Clock Out:</strong> ${esc(state.editOriginal.clockOut) || "(empty)"} → ${esc($("#edit-clock-out").value) || "(empty)"}`);
   }
   if ($("#edit-type").value !== state.editOriginal.type) {
-    changes.push(`<strong>Type:</strong> ${state.editOriginal.type} → ${$("#edit-type").value}`);
+    changes.push(`<strong>Type:</strong> ${esc(state.editOriginal.type)} → ${esc($("#edit-type").value)}`);
   }
   if ($("#edit-comment").value !== state.editOriginal.comment) {
-    changes.push(`<strong>Comment:</strong> "${state.editOriginal.comment || "(empty)"}" → "${$("#edit-comment").value || "(empty)"}"`);
+    changes.push(`<strong>Comment:</strong> "${esc(state.editOriginal.comment) || "(empty)"}" → "${esc($("#edit-comment").value) || "(empty)"}"`);
   }
 
   if (changes.length === 0) return;
