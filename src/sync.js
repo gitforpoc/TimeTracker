@@ -1,4 +1,5 @@
 import { STORAGE_KEYS, FAILED_QUEUE_TTL_DAYS } from "./constants.js";
+import { safeSetItem } from "./utils.js";
 
 // Items older than this in the queue indicate something is broken (auth expired,
 // permanent server error, etc). Banner UI surfaces this since the small "N pending"
@@ -302,12 +303,12 @@ class SyncManager {
   }
 
   _saveQueue() {
-    localStorage.setItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(this.queue));
+    safeSetItem(STORAGE_KEYS.SYNC_QUEUE, JSON.stringify(this.queue));
     this._notifyUI();
   }
 
   _saveFailed() {
-    localStorage.setItem(STORAGE_KEYS.FAILED_QUEUE, JSON.stringify(this.failed));
+    safeSetItem(STORAGE_KEYS.FAILED_QUEUE, JSON.stringify(this.failed));
     this._notifyUI();
   }
 

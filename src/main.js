@@ -571,6 +571,19 @@ async function initAuth(retryCount = 0) {
 els.username.value = store.userName;
 checkInputState();
 
+// Ask the browser to make our storage persistent (exempt from eviction under
+// storage pressure / Safari ITP). Best-effort and fire-and-forget — not every
+// browser grants it, but where it does this directly prevents the silent
+// clock-data loss that storage eviction would otherwise cause. Never blocks boot.
+if (navigator.storage && navigator.storage.persist) {
+  navigator.storage
+    .persist()
+    .then((granted) =>
+      console.info(`[storage] persistent storage ${granted ? "granted" : "denied"}`)
+    )
+    .catch(() => {});
+}
+
 // Start SSO check (non-blocking)
 initAuth();
 initComplianceUI();

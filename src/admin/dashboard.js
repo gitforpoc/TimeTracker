@@ -1,5 +1,5 @@
 import { state, isAdmin } from "./state.js";
-import { $, esc, formatDateISO, formatDateShort, formatTimeShort, goToShiftLogForEmployee } from "./helpers.js";
+import { $, esc, formatDateISO, formatDateShort, formatTimeShort, goToShiftLogForEmployee, showToast } from "./helpers.js";
 import { loadEmployeesTab } from "./employees.js";
 import {
   calculatePeriodOvertime,
@@ -16,6 +16,10 @@ import { findOverlappingShifts, findMicroShifts } from "./anomalies.js";
 
 const PERIOD_TYPE_KEY = "tt_admin_period_type";
 const CUSTOM_PERIOD_KEY = "tt_admin_custom_period";
+
+// Hard row cap on the visible-period shift query. Hitting it means totals are
+// computed on a truncated set — surfaced to the admin via a toast + console warn.
+const SHIFT_QUERY_LIMIT = 5000;
 
 // Soft-deleted (inactive) employees should not appear in payroll/OT calcs or alerts.
 // They still exist in tt_employee_settings for audit; the Employees tab still shows them
@@ -257,7 +261,7 @@ export async function loadDashboard() {
       .select("id, user_name, clock_in, clock_out, duration_minutes, type")
       .gte("clock_in", `${startISO}T00:00:00`)
       .lte("clock_in", `${endISO}T23:59:59`)
-      .limit(5000),
+      .limit(SHIFT_QUERY_LIMIT),
     state.supabase.from("tt_employee_settings").select("*"),
     state.supabase
       .from("tt_shifts")
@@ -269,6 +273,15 @@ export async function loadDashboard() {
   ]);
 
   if (myToken !== state.loadToken) return; // a newer call superseded this one
+
+  // Surface silent truncation: a full page means the period likely has more
+  // shifts than we fetched, so payroll totals below would be understated.
+  if (shiftsResult.data && shiftsResult.data.length >= SHIFT_QUERY_LIMIT) {
+    console.warn(
+      `[dashboard] shift query hit ${SHIFT_QUERY_LIMIT}-row limit — totals may be incomplete; narrow the period`
+    );
+    showToast(`⚠️ Showing first ${SHIFT_QUERY_LIMIT} shifts — narrow the period for accurate totals`);
+  }
 
   const rows = shiftsResult.data || [];
   const settings = settingsResult.data || [];

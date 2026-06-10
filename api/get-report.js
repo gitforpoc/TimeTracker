@@ -1,5 +1,9 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Hard row cap on the report query. Hitting it means the result is truncated and
+// downstream payroll totals would be incomplete — surfaced via X-Result-Truncated.
+const ROW_LIMIT = 5000;
+
 export default async function handler(req, res) {
   // 1. CORS headers (So Google Sheets can connect)
   res.setHeader("Access-Control-Allow-Credentials", true);
@@ -84,7 +88,7 @@ export default async function handler(req, res) {
       .gte("clock_in", `${start}T00:00:00`)
       .lte("clock_in", `${end}T23:59:59`)
       .order("clock_in", { ascending: true })
-      .limit(5000);
+      .limit(ROW_LIMIT);
 
     if (name) {
       const cleanName = name.trim();
@@ -96,6 +100,20 @@ export default async function handler(req, res) {
 
     if (error) {
       throw error;
+    }
+
+    // Surface silent truncation: if we got exactly ROW_LIMIT rows the result is
+    // almost certainly capped, so payroll totals downstream would be incomplete.
+    // Signal it via a header (body stays a bare array for the Google Sheets
+    // consumer) and log it server-side.
+    if (data && data.length >= ROW_LIMIT) {
+      console.warn(
+        `get-report: hit ${ROW_LIMIT}-row limit for ${start}..${end} name=${name || "*"} — response truncated`
+      );
+      res.setHeader("X-Result-Truncated", "true");
+      // Without this, browser fetch() can't read the custom header cross-origin.
+      // (Google Apps Script isn't subject to CORS and reads it either way.)
+      res.setHeader("Access-Control-Expose-Headers", "X-Result-Truncated");
     }
 
     // 6. Return the result

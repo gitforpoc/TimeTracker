@@ -49,3 +49,22 @@ export function showToast(msg) {
   t.classList.add("show");
   setTimeout(() => t.classList.remove("show"), 2000);
 }
+
+// Best-effort localStorage write. If the browser refuses the write (quota
+// exceeded, Safari private mode), surface a visible warning instead of letting
+// clock data vanish silently — the worst failure mode for a time clock. Returns
+// true on success, false if the write was rejected.
+export function safeSetItem(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    console.error("localStorage write failed:", key, e);
+    try {
+      showToast("⚠️ Storage full — data may not be saved. Tell your supervisor.");
+    } catch {
+      /* no DOM (e.g. unit tests) — the console.error above is enough */
+    }
+    return false;
+  }
+}

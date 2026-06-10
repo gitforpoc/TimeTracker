@@ -1,4 +1,5 @@
 import { COMPLIANCE_MODE, STORAGE_KEYS } from "./constants.js";
+import { safeSetItem } from "./utils.js";
 
 /**
  * Show GPS consent dialog before enabling location tracking.
@@ -32,7 +33,9 @@ export async function requireGpsConsent() {
         timestamp: new Date().toISOString(),
         userAgent: navigator.userAgent,
       });
-      localStorage.setItem(STORAGE_KEYS.GPS_CONSENT, record);
+      // safeSetItem: if the write fails the dialog still closes (no stuck UI);
+      // with no stored record the consent dialog simply re-shows next time.
+      safeSetItem(STORAGE_KEYS.GPS_CONSENT, record);
       cleanup();
       resolve(true);
     };

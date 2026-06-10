@@ -16,6 +16,42 @@ import { createClient } from "@supabase/supabase-js";
 const MAX_BODY_BYTES = 32 * 1024; // 32 KB — a report is ~1-3 KB
 const DIAG_RETENTION_DAYS = 30;   // throwaway debug data — auto-pruned on each insert
 
+// Best-effort per-IP rate limit. The endpoint is unauthenticated by design, so
+// this is the cheap backstop against a flood bloating tt_diagnostics.
+const RATE_WINDOW_MS = 60 * 1000; // 1-minute sliding window
+const RATE_MAX_PER_WINDOW = 10;   // generous — diagnostics are rare manual taps
+const ipHits = new Map();         // ip -> number[] of recent hit timestamps
+
+// Extract the client IP from proxy headers (Vercel sets x-forwarded-for).
+export function clientIp(req) {
+  const fwd = req.headers && req.headers["x-forwarded-for"];
+  if (typeof fwd === "string" && fwd.length) return fwd.split(",")[0].trim();
+  return (req.socket && req.socket.remoteAddress) || null;
+}
+
+// Sliding-window rate limit. Pure except for the `hits` map it's handed, so it
+// unit-tests with a fresh Map. Returns true if `ip` is OVER the limit (reject).
+// A null/empty ip is never limited.
+//
+// NOTE: in serverless this map lives only for a warm lambda instance and resets
+// on cold start. That's acceptable — a flood keeps the instance warm (so it's
+// caught), while legitimate infrequent diagnostics never accumulate. This is a
+// backstop, not a hard guarantee; the app marker + 32KB cap + tiny append-only
+// table bound the worst case regardless.
+export function checkRateLimit(hits, ip, nowMs, windowMs = RATE_WINDOW_MS, max = RATE_MAX_PER_WINDOW) {
+  if (!ip) return false;
+  const recent = (hits.get(ip) || []).filter((t) => nowMs - t < windowMs);
+  recent.push(nowMs);
+  hits.set(ip, recent);
+  // Opportunistic cleanup so the map can't grow unbounded on a long-lived instance.
+  if (hits.size > 5000) {
+    for (const [k, v] of hits) {
+      if (!v.some((t) => nowMs - t < windowMs)) hits.delete(k);
+    }
+  }
+  return recent.length > max;
+}
+
 /**
  * Compute device-vs-server clock skew in seconds from the client's snapshot
  * time and the server's receive time. Positive = device clock AHEAD of server.
@@ -47,6 +83,11 @@ export default async function handler(req, res) {
   }
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const ip = clientIp(req);
+  if (checkRateLimit(ipHits, ip, Date.now())) {
+    return res.status(429).json({ error: "Too many requests" });
   }
 
   const body = req.body;
@@ -97,6 +138,7 @@ export default async function handler(req, res) {
   const serverNowMs = Date.now();
   report.tokenValidServer = tokenValid;
   report.serverReceivedAt = new Date(serverNowMs).toISOString();
+  report.serverClientIp = ip; // forensics: which device/network sent this
   // Persist clock skew server-side (the client's connectivity block never makes
   // it into the stored body — see serverClockSkewSec docs).
   const skew = serverClockSkewSec(report.clientTime, serverNowMs);

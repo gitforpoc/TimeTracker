@@ -34,7 +34,7 @@ import {
   EDIT_DRAFT_WARN_DAYS,
 } from "./constants.js";
 import { store } from "./store.js";
-import { showToast } from "./utils.js";
+import { showToast, safeSetItem } from "./utils.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -55,11 +55,9 @@ function readAllRaw() {
 }
 
 function writeAllRaw(drafts) {
-  try {
-    localStorage.setItem(STORAGE_KEYS.EDIT_DRAFTS, JSON.stringify(drafts));
-  } catch {
-    // Storage quota or disabled — nothing useful we can do here.
-  }
+  // safeSetItem warns the user on quota failure — a silently dropped draft is
+  // exactly the data loss this module exists to prevent.
+  safeSetItem(STORAGE_KEYS.EDIT_DRAFTS, JSON.stringify(drafts));
 }
 
 /**

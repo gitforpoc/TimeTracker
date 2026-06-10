@@ -1,7 +1,7 @@
 import { store } from "./store.js";
 import { sync } from "./sync.js";
 import { showDialog } from "./dialogs.js";
-import { formatTime, formatDate, minsToHm, copyToClipboard, showToast, escapeHtml } from "./utils.js";
+import { formatTime, formatDate, minsToHm, copyToClipboard, showToast, escapeHtml, safeSetItem } from "./utils.js";
 import { getSupabaseClient } from "./auth.js";
 import { getPeriodList } from "./payPeriods.js";
 import { OFFLINE_DRAFTS_ENABLED, EDIT_DRAFT_TTL_DAYS } from "./constants.js";
@@ -102,7 +102,7 @@ function persistEditedFields(map) {
   for (const [shiftId, set] of map) {
     obj[shiftId] = [...set];
   }
-  localStorage.setItem("tt_edited_fields", JSON.stringify(obj));
+  safeSetItem("tt_edited_fields", JSON.stringify(obj));
 }
 
 /**

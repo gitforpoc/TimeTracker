@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from "./constants.js";
+import { safeSetItem } from "./utils.js";
 
 class Store {
   constructor() {
@@ -19,10 +20,10 @@ class Store {
   }
 
   save() {
-    localStorage.setItem(STORAGE_KEYS.DATA, JSON.stringify(this.data));
-    localStorage.setItem(STORAGE_KEYS.STATUS, this.status);
+    safeSetItem(STORAGE_KEYS.DATA, JSON.stringify(this.data));
+    safeSetItem(STORAGE_KEYS.STATUS, this.status);
     if (this.currentShiftId) {
-      localStorage.setItem(STORAGE_KEYS.SHIFT_ID, this.currentShiftId);
+      safeSetItem(STORAGE_KEYS.SHIFT_ID, this.currentShiftId);
     } else {
       localStorage.removeItem(STORAGE_KEYS.SHIFT_ID);
     }
@@ -30,17 +31,17 @@ class Store {
 
   saveUser(name) {
     this.userName = name;
-    localStorage.setItem(STORAGE_KEYS.USER, name);
+    safeSetItem(STORAGE_KEYS.USER, name);
   }
 
   saveAutoShare(val) {
     this.autoShare = val;
-    localStorage.setItem(STORAGE_KEYS.AUTO_SHARE, val);
+    safeSetItem(STORAGE_KEYS.AUTO_SHARE, val);
   }
 
   saveGeoEnabled(val) {
     this.geoEnabled = val;
-    localStorage.setItem(STORAGE_KEYS.GEO_ENABLED, val);
+    safeSetItem(STORAGE_KEYS.GEO_ENABLED, val);
   }
 
   findShift(id) {
