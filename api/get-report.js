@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { nyDayStartUtc } from "./tzBounds.js";
 
 // Hard row cap on the report query. Hitting it means the result is truncated and
 // downstream payroll totals would be incomplete — surfaced via X-Result-Truncated.
@@ -85,8 +86,12 @@ export default async function handler(req, res) {
     let query = supabase
       .from("tt_shifts")
       .select("user_name, clock_in, clock_out, duration_minutes, type, comment")
-      .gte("clock_in", `${start}T00:00:00`)
-      .lte("clock_in", `${end}T23:59:59`)
+      // Bucket by NY-local clock_in date: include everything from NY-midnight of
+      // `start` up to (exclusive) NY-midnight of the day AFTER `end`. Filtering on
+      // bare UTC strings dropped evening shifts (clocked in after ~8pm NY) into the
+      // next pay period. See api/tzBounds.js.
+      .gte("clock_in", nyDayStartUtc(start))
+      .lt("clock_in", nyDayStartUtc(end, 1))
       .order("clock_in", { ascending: true })
       .limit(ROW_LIMIT);
 

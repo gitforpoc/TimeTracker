@@ -1,5 +1,5 @@
 import { state, isAdmin } from "./state.js";
-import { $, esc, formatDateISO, formatDateShort, formatTimeShort, goToShiftLogForEmployee, showToast } from "./helpers.js";
+import { $, esc, formatDateISO, formatDateShort, formatTimeShort, goToShiftLogForEmployee, showToast, nyDayStartUtc } from "./helpers.js";
 import { loadEmployeesTab } from "./employees.js";
 import {
   calculatePeriodOvertime,
@@ -259,16 +259,19 @@ export async function loadDashboard() {
     state.supabase
       .from("tt_shifts")
       .select("id, user_name, clock_in, clock_out, duration_minutes, type")
-      .gte("clock_in", `${startISO}T00:00:00`)
-      .lte("clock_in", `${endISO}T23:59:59`)
+      // NY-local date bucketing (see api/tzBounds.js): keeps evening shifts in the
+      // period they were worked instead of spilling into the next UTC day's period.
+      .gte("clock_in", nyDayStartUtc(startISO))
+      .lt("clock_in", nyDayStartUtc(endISO, 1))
       .limit(SHIFT_QUERY_LIMIT),
     state.supabase.from("tt_employee_settings").select("*"),
     state.supabase
       .from("tt_shifts")
       .select("user_name, clock_in, duration_minutes, type")
       .eq("type", "work")
-      .gte("clock_in", `${currentPeriodStartISO}T00:00:00`)
-      .lte("clock_in", `${currentPeriodEndISO}T23:59:59`)
+      // NY-local date bucketing (see api/tzBounds.js) — same fix for the OT-alert query.
+      .gte("clock_in", nyDayStartUtc(currentPeriodStartISO))
+      .lt("clock_in", nyDayStartUtc(currentPeriodEndISO, 1))
       .limit(2000),
   ]);
 

@@ -1,5 +1,5 @@
 import { state } from "./state.js";
-import { $, $$, esc, formatDateShort, formatTimeShort, showToast } from "./helpers.js";
+import { $, $$, esc, formatDateShort, formatTimeShort, showToast, nyDayStartUtc } from "./helpers.js";
 import { getZoneColor, geoIcon, geoZoneLabel } from "./geo.js";
 
 // Classify a shift's audit trail into a glanceable badge + row-tint kind.
@@ -88,8 +88,10 @@ export async function loadShifts() {
   let query = state.supabase
     .from("tt_shifts")
     .select("id, user_name, clock_in, clock_out, duration_minutes, type, comment")
-    .gte("clock_in", `${start}T00:00:00`)
-    .lte("clock_in", `${end}T23:59:59`)
+    // NY-local date bucketing (see api/tzBounds.js): a shift clocked in after ~8pm
+    // NY rolls into the next UTC day, so a bare-UTC filter put it in the wrong period.
+    .gte("clock_in", nyDayStartUtc(start))
+    .lt("clock_in", nyDayStartUtc(end, 1))
     .order("clock_in", { ascending: false })
     .limit(5000);
 

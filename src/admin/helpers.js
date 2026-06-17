@@ -15,6 +15,37 @@ export function formatDateISO(d) {
   return `${y}-${m}-${day}`;
 }
 
+// --- NY-local pay-period boundaries (UTC instants) ---
+// IDENTICAL copy of api/tzBounds.js (the api/ and src/ trees can't share a module
+// across the Vercel build boundary). Keep in sync — src/__tests__/tzBounds.test.js
+// asserts the two copies agree. See api/tzBounds.js for the full rationale: shifts
+// must be bucketed by NY-local clock_in date, not the UTC date Postgres infers from
+// a bare timestamp string, or evening shifts land in the wrong pay period.
+export function nyOffsetMinutes(instant) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const p = Object.fromEntries(
+    dtf.formatToParts(instant).map((x) => [x.type, x.value])
+  );
+  const asUTC = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  return (asUTC - instant.getTime()) / 60000;
+}
+
+export function nyDayStartUtc(dateStr, addDays = 0) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const guess = new Date(Date.UTC(y, m - 1, d + addDays, 0, 0, 0));
+  const offsetMin = nyOffsetMinutes(guess);
+  return new Date(guess.getTime() - offsetMin * 60000).toISOString();
+}
+
 export function formatDateShort(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
